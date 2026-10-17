@@ -50,7 +50,7 @@ const say = {
   stack: `Here's the stack.${stripeOk ? ' Stripe Projects set it up from the terminal: init, add CreateOS, and the credentials land in the env file.' : ''} Every batch runs in a CreateOS sandbox with its network locked down, because the bots are code an LLM wrote. A request from inside the sandbox fails. And the same seed gives the same result in the sandbox as on my laptop, hash for hash.`,
   fix: `Finally, the fix. One batch with unlimited drops gives the pass rate for every possible drop limit. The agent picks the limit that hits the target and re-tests it with fresh seeds. ${patched.length ? `${patched.length} level${patched.length > 1 ? 's' : ''} re-tuned, ${verified.length} verified within error bars.` : 'Every level landed inside the target band.'}`,
   orbital: orbital ? `And it isn't tied to one game. On an endless arcade game, the same agent wrote new bots, found which difficulty knob actually matters, and tuned it so a regular player reaches ${orbital.passT} seconds about half the time${orbital.verify.inBand ? ', verified' : ''}.` : '',
-  outro: `Level Doctor. Ten years of triple-A playtesting research, in five minutes, for indie web games. ${createos ? 'Built on CreateOS and Stripe Projects.' : 'Built for CreateOS and Stripe Projects.'}`,
+  outro: `Level Doctor. Ten years of triple-A playtesting research, in five minutes, for indie web games. ${createos && stripeOk ? 'Built on CreateOS and Stripe Projects.' : createos ? 'Built on CreateOS.' : 'Built for CreateOS and Stripe Projects.'}`,
 }
 const order = ['title', 'code', 'run', 'stack', 'chaos', 'chaosChart', 'tempo', 'fix', ...(orbital ? ['orbital'] : []), 'outro']
 
@@ -88,7 +88,10 @@ const browser = await chromium.launch({ executablePath: CHROME })
   const cards = await p.$$('section.card')
   await cards[0].screenshot({ path: path.join(DEMO, 'shots', 'curve.png') })
   await cards[1].screenshot({ path: path.join(DEMO, 'shots', 'chaos.png') })
-  if (orbital) await (await p.$('#orbcard')).screenshot({ path: path.join(DEMO, 'shots', 'orbital.png') })
+  if (orbital) {
+    await (await p.$('#orbcurve')).screenshot({ path: path.join(DEMO, 'shots', 'orbital-curve.png') })
+    await (await p.$('#orbtable table')).screenshot({ path: path.join(DEMO, 'shots', 'orbital-knobs.png') })
+  }
   await p.close()
 }
 await mkdir(path.join(DEMO, 'mon'), { recursive: true })
@@ -109,7 +112,7 @@ const stage = {
   ],
   tempoText: `Bot speed: cleared in ${tp.fast.time.toFixed(1)} s. The first bass drop comes at ${tp.firstBass.toFixed(1)} s. It never happened.<br><br>Human speed: ${tp.slow.time.toFixed(1)} s, with every bass drop.`,
   fixBadges: [`${res.runs.total.toLocaleString('en-US')} playtests`, `${patched.length} levels re-tuned`, `${verified.length} verified in band`, `funnel: ${Math.round(res.funnel.before.at(-1) * 100)}% → ${Math.round(res.funnel.after.at(-1) * 100)}% finish`],
-  timeline, total, url: process.env.LD_URL || '',
+  timeline, total, url: process.env.LD_URL || '', stripeOk, reportUrl: existsSync(path.join(ROOT, 'out', 'report-url.txt')) ? (await readFile(path.join(ROOT, 'out', 'report-url.txt'), 'utf8')).trim() : '',
 }
 await writeFile(path.join(DEMO, 'stage-data.js'), 'window.STAGE = ' + JSON.stringify(stage).replace(/</g, '\\u003c'))
 // Frame-by-frame capture on a virtual clock: set the time, screenshot, repeat. Live screen recording drops

@@ -62,7 +62,9 @@ export async function getSandbox() {
       try {
         const sb = await client.getSandbox((await readFile(SANDBOX_FILE, 'utf8')).trim())
         if (sb.status === 'paused') await sb.resume()
-        if (['running', 'paused'].includes(sb.status) || (await sb.refresh()).status === 'running') { await sb.setEgress(NO_EGRESS); return sb }
+        // resume() returns while the sandbox is still "resuming"; commands need it "running"
+        for (let i = 0; i < 60 && ['resuming', 'pausing', 'starting', 'creating'].includes(sb.status); i++) { await new Promise(r => setTimeout(r, 1000)); await sb.refresh() }
+        if (sb.status === 'running') { await sb.setEgress(NO_EGRESS); return sb }
       } catch { }
     }
     const sb = await client.createSandbox({ shape: 's-1vcpu-1gb', rootfs: 'devbox:1', egress: NO_EGRESS, ingress_enabled: true, auto_pause_after_seconds: 900 })

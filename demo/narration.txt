@@ -16,4 +16,4 @@
 
 [orbital] And it isn't tied to one game. On an endless arcade game, the same agent wrote new bots, found which difficulty knob actually matters, and tuned it so a regular player reaches 20 seconds about half the time, verified.
 
-[outro] Level Doctor. Ten years of triple-A playtesting research, in five minutes, for indie web games. Built on CreateOS and Stripe Projects.
+[outro] Level Doctor. Ten years of triple-A playtesting research, in five minutes, for indie web games. Built on CreateOS.

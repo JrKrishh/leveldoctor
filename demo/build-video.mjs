@@ -9,7 +9,8 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
 
-const ROOT = process.cwd(), DEMO = path.join(ROOT, 'demo'), WORK = path.join(DEMO, 'work')
+// scratch space is demo/work/build-<variant>: it's wiped on every build, so it must never hold the presenter's takes (demo/work/take-*.webm)
+const ROOT = process.cwd(), DEMO = path.join(ROOT, 'demo'), WORK = path.join(DEMO, 'work', process.env.LD_PRESENTER ? 'build-presenter' : 'build')
 const CHROME = process.env.CHROME || path.join(process.env.LOCALAPPDATA, 'ms-playwright', 'chromium-1243', 'chrome-win64', 'chrome.exe')
 const VOICE = process.env.LD_VOICE || 'en-US-AndrewNeural'
 const MASHPIT = path.resolve(ROOT, '../mashpit/public')
@@ -112,7 +113,7 @@ const stage = {
   ],
   tempoText: `Bot speed: cleared in ${tp.fast.time.toFixed(1)} s. The first bass drop comes at ${tp.firstBass.toFixed(1)} s. It never happened.<br><br>Human speed: ${tp.slow.time.toFixed(1)} s, with every bass drop.`,
   fixBadges: [`${res.runs.total.toLocaleString('en-US')} playtests`, `${patched.length} levels re-tuned`, `${verified.length} verified in band`, `funnel: ${Math.round(res.funnel.before.at(-1) * 100)}% → ${Math.round(res.funnel.after.at(-1) * 100)}% finish`],
-  timeline, total, url: process.env.LD_URL || '', stripeOk, reportUrl: existsSync(path.join(ROOT, 'out', 'report-url.txt')) ? (await readFile(path.join(ROOT, 'out', 'report-url.txt'), 'utf8')).trim() : '',
+  timeline, total, url: process.env.LD_URL || '', stripeOk, presenter: !!process.env.LD_PRESENTER, reportUrl: existsSync(path.join(ROOT, 'out', 'report-url.txt')) ? (await readFile(path.join(ROOT, 'out', 'report-url.txt'), 'utf8')).trim() : '',
 }
 await writeFile(path.join(DEMO, 'stage-data.js'), 'window.STAGE = ' + JSON.stringify(stage).replace(/</g, '\\u003c'))
 // Frame-by-frame capture on a virtual clock: set the time, screenshot, repeat. Live screen recording drops
@@ -141,7 +142,7 @@ if (existsSync(music)) { inputs.push('-stream_loop', '-1', '-i', music); filters
 filters.push(`${mixIn}amix=inputs=${order.length + (existsSync(music) ? 1 : 0)}:normalize=0:duration=longest[out]`)
 const wav = path.join(WORK, 'mix.wav')
 execFileSync('ffmpeg', ['-y', ...inputs, '-filter_complex', filters.join(';'), '-map', '[out]', '-t', total.toFixed(2), wav], { stdio: 'pipe' })
-const mp4 = path.join(DEMO, 'leveldoctor-demo.mp4')
+const mp4 = path.join(DEMO, process.env.LD_PRESENTER ? 'leveldoctor-demo-presenter.mp4' : 'leveldoctor-demo.mp4')   // presenter: room for the webcam bubble
 execFileSync('ffmpeg', ['-y', '-framerate', String(FPS), '-i', path.join(frames, '%05d.jpg'), '-i', wav, '-map', '0:v', '-map', '1:a', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '160k', '-t', total.toFixed(2), mp4], { stdio: 'pipe' })
 await writeFile(path.join(DEMO, 'narration.txt'), order.map(k => `[${k}] ${say[k]}`).join('\n\n'))
 console.log(`video → ${path.relative(ROOT, mp4)} (${total.toFixed(1)} s, ${nFrames} frames at ${FPS} fps)`)

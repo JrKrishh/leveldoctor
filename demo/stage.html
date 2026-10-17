@@ -21,6 +21,8 @@ img.shot { border-radius: 12px; border: 1px solid #2c2a36; max-width: 100%; }
 .badge { display: inline-block; border: 1px solid #3b3946; border-radius: 99px; padding: 6px 14px; font-size: 16px; color: #c3c2b7; margin: 14px 8px 0 0; }
 .flash { position: absolute; left: 0; right: 0; top: 40%; text-align: center; font-size: 34px; font-weight: 800; color: #ff4fb4; opacity: 0; text-shadow: 0 0 20px #ff4fb4; }
 .timer { font: 600 22px 'JetBrains Mono', monospace; text-align: center; margin-top: 8px; }
+/* presenter layout: a right-hand column stays free for the presenter's webcam bubble */
+body.presenter .scene { transform: scale(0.8); transform-origin: 0 0; }   /* same layout at 80%: frees a 256 px column on the right */
 .subtitle { position: absolute; left: 0; right: 0; bottom: 0; height: 84px; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 21px; color: #fff; background: rgba(8,7,12,.82); padding: 0 140px; line-height: 1.35; }
 </style></head>
 <body>
@@ -29,6 +31,7 @@ img.shot { border-radius: 12px; border: 1px solid #2c2a36; max-width: 100%; }
 <script src="stage-data.js"></script>
 <script>
 const D = window.STAGE, T = D.traces
+if (D.presenter || location.hash === '#presenter') document.body.classList.add('presenter')
 const imgs = {}
 const load = k => new Promise(r => { const im = new Image(); im.onload = () => { imgs[k] = im; r() }; im.onerror = r; im.src = `mon/${k}.webp` })
 

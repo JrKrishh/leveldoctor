@@ -2,9 +2,9 @@
 
 [code] Step one: the agent writes code. A language model reads the game's rules and writes three bots, casual, regular and expert, as JavaScript. The agent runs them in the real game and feeds the measured pass rates back until skill ranks correctly. Here that took 5 rounds.
 
-[run] Step two: it runs its code. The real, unmodified game runs headless with a virtual clock, a fraction of a second per level, and the same seed replays byte for byte. 6,560 playtests inside a CreateOS sandbox, each number with a ninety-five percent error bar.
+[run] Step two: it runs its code. The real, unmodified game runs headless with a virtual clock, a fraction of a second per level, and the same seed replays byte for byte. 6,560 playtests inside a CreateOS sandbox provisioned with Stripe Projects, each number with a ninety-five percent error bar.
 
-[stack] Here's the stack. Every batch runs in a CreateOS sandbox with its network locked down, because the bots are code an LLM wrote. A request from inside the sandbox fails. And the same seed gives the same result in the sandbox as on my laptop, hash for hash.
+[stack] Here's the stack. Stripe Projects set it up from the terminal: init, add CreateOS, and the credentials land in the env file. Every batch runs in a CreateOS sandbox with its network locked down, because the bots are code an LLM wrote. A request from inside the sandbox fails. And the same seed gives the same result in the sandbox as on my laptop, hash for hash.
 
 [chaos] Step three is a metric I couldn't find in any existing tool: the Chaos Ratio. This is Earthquake. Same seed, same bot. The only difference: the fourth drop moved by one ten-thousandth of a unit. One run wins. The other loses.
 
@@ -16,4 +16,4 @@
 
 [orbital] And it isn't tied to one game. On an endless arcade game, the same agent wrote new bots, found which difficulty knob actually matters, and tuned it so a regular player reaches 20 seconds about half the time, verified.
 
-[outro] Level Doctor. Ten years of triple-A playtesting research, in five minutes, for indie web games. Built on CreateOS.
+[outro] Level Doctor. Ten years of triple-A playtesting research, in five minutes, for indie web games. Built on CreateOS and Stripe Projects.

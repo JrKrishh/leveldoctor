@@ -32,11 +32,19 @@ Patch → verify with fresh seeds → report page served from the sandbox's live
 
 ## What's new here
 
-- **Chaos Ratio.** Replay a run with one drop nudged by 0.0001 units (far below a pixel). C = flip rate ÷ 2p(1−p). **C ≈ 1: losses are dice rolls** a designer can only soften. **C ≈ 0: losses are reproducible traps** a designer can find and fix. Pass rate alone can't tell these apart. On Mash Pit, *Tight Squeeze* (C ≈ 1.2) and *Frozen Friends* (C = 0.00) have similar pass rates and completely different problems.
+- **Chaos Ratio.** Replay a run with one drop nudged by 0.0001 units (far below a pixel). C = flip rate ÷ 2p(1−p). **C ≈ 1: losses are dice rolls** a designer can only soften. **C ≈ 0: losses are reproducible traps** a designer can find and fix. Pass rate alone can't tell these apart. In the final Mash Pit run, *Tight Squeeze* (regular bot 63%, C = 0.00: a trap) and *The Royal Mash* (63%, C = 0.68: mostly luck) have the same pass rate and opposite fixes. C describes a level *and* a play style: with an earlier, simpler bot the same levels scored differently, so Level Doctor reports C for the regular player it tunes for. On ORBITAL (no physics) the same nudge changes 11% of runs but almost never flips one (C = 0.09): its losses are patterns a player can learn.
 - **Twist exposure.** Each run is paired with a copy where one twist is switched off (same seeds); identical pairs mean the twist never mattered. A bot playing at typical bot speed clears *Bass Drop!* before the first bass drop arrives: it reports the level is fine without ever hearing its twist (5% of runs exposed vs 100% at human tempo). Level Doctor's bots play at a human 1.2 s per drop.
 - **One-batch drop-limit tuning.** Play once with unlimited drops, read the pass rate for *every* possible limit straight off the survival curve, pick the limit that hits the target, then verify it with fresh seeds.
 - **Error bars everywhere.** Every pass rate carries a 95% interval; patches count as verified only when the interval reaches the target band.
 - **Churn funnel.** A mixed population (40% casual × 3 tries, 40% regular × 5, 20% expert × 8) shows where players would quit, before vs after.
+
+## Results on Mash Pit (final run, Oct 18)
+
+- **6,560 playtests inside the CreateOS sandbox** (709 s on one vCPU). The same run on local workers matched it **20/20 levels, number for number**: same seeds, same results, Linux sandbox vs Windows laptop.
+- **Bots:** Qwen3-235B (Nebius Token Factory) wrote them; the agent ran each version in the sandbox and sent back crashes, skill inversions and per-level diagnostics. Five rounds later: casual 78% < regular 85% < expert 86% across 7 test levels covering every goal type, with no level where a skilled bot loses to random play.
+- **Chaos:** on 8 levels losses are dice rolls (C ≥ 0.6, e.g. *Bouncy Castle* 1.20, *Frozen Friends* 1.11); on *Tight Squeeze* (C = 0.00) they are a reproducible trap.
+- **Twist exposure:** on 5 levels fast bots miss the DJ twist entirely (*Bass Drop!*: 5% of runs exposed at bot speed vs 100% at human speed). On 5 levels a twist changed few runs at all (e.g. the fog on *Lights Out* changed 0%: the regular bot never looks at the next monster, so hiding it can't matter to that play style).
+- **Fix:** 6 levels were far too easy for the target curve; one survival batch proposed new drop limits, and fresh-seed verification confirmed **5 of 6** within error bars (`out/patch.diff`, applied only to a copy). *Slime Time* failed verification and is reported as such.
 
 ## Not tied to one game: ORBITAL
 

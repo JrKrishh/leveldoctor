@@ -9,3 +9,4 @@ demo/*.mp4
 demo/stage-data.js
 demo/traces.json
 report/dist/
+demo/tts-cache/

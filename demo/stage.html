@@ -115,18 +115,27 @@ function sentenceAt(s, t) {
 }
 const plan = D.timeline.map(s => ({ ...s, tick: S[s.scene]() }))
 const scenes = [...document.querySelectorAll('.scene')]
+// Draws the video as it looks at time t (seconds). Used live (requestAnimationFrame) and for frame-by-frame
+// capture on a virtual clock, which keeps the picture exactly in sync with the narration.
+const starts = []; { let a = 0; for (const s of plan) { starts.push(a); a += s.dur } }
+const FADE = 0.45
+function renderAt(t) {
+  let k = plan.length - 1
+  for (let i = 0; i < plan.length; i++) if (t < starts[i] + plan[i].dur) { k = i; break }
+  const local = Math.min(t - starts[k], plan[k].dur)
+  scenes.forEach((s, i) => { s.style.transition = 'none'; s.style.opacity = i === k ? Math.min(1, local / FADE) : (i === k - 1 && local < FADE ? 1 - local / FADE : 0) })
+  if (k > 0 && local < FADE) plan[k - 1].tick(plan[k - 1].dur, plan[k - 1].dur)
+  document.getElementById('subtitle').textContent = sentenceAt(plan[k], local)
+  plan[k].tick(local, plan[k].dur)
+}
+window.renderAt = renderAt
 Promise.all(T.tiers.map(t => load(t.key))).then(() => {
   window.READY = true
   const start = () => {
     const t0 = performance.now()
     const loop = () => {
       const t = (performance.now() - t0) / 1000
-      let acc = 0, k = plan.length - 1
-      for (let i = 0; i < plan.length; i++) { if (t < acc + plan[i].dur) { k = i; break } acc += plan[i].dur }
-      if (k === plan.length - 1 && t >= acc + plan[k].dur) acc = plan.slice(0, k).reduce((a, s) => a + s.dur, 0)
-      scenes.forEach((s, i) => s.classList.toggle('on', i === k))
-      document.getElementById('subtitle').textContent = sentenceAt(plan[k], t - acc)
-      plan[k].tick(t - acc, plan[k].dur)
+      renderAt(t)
       if (t < D.total + 1) requestAnimationFrame(loop); else window.DONE = true
     }
     loop()

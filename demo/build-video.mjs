@@ -4,6 +4,7 @@
 import { readFile, writeFile, mkdir, copyFile, readdir, rm } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
@@ -24,6 +25,7 @@ const bestRound = +(bots.match(/round (\d+)/)?.[1] || 0)
 const stream = await readJson(`out/llm-stream-round${bestRound}.json`)       // the model's real output with timings
 const sbCheck = await readJson('out/sandbox-check.json')
 const orbital = await readJson('out/orbital-results.json')
+const cross = await readJson('out/cross-check.json')
 let stripeOk = false
 try { stripeOk = !/Welcome to Stripe Projects/.test(execFileSync('stripe', ['projects', 'status'], { cwd: ROOT, stdio: 'pipe', timeout: 30000 }).toString()) } catch { }
 await rm(WORK, { recursive: true, force: true }); await mkdir(path.join(WORK, 'audio'), { recursive: true })
@@ -39,15 +41,15 @@ const pc0 = p => `${Math.round(p * 100)}%`
 const roundsText = rounds.map(r => ({ round: r.round, text: r.eval.errors?.length ? 'bots crashed → rewrite' : `${pc0(r.eval.table.random.overall.p)} < ${pc0(r.eval.table.greedy.overall.p)} < ${pc0(r.eval.table.lookahead.overall.p)} ${r.eval.ok ? '✓' : '→ rewrite'}` }))
 const lastOk = rounds.find(r => r.eval.ok)
 const say = {
-  title: `This is Level Doctor. I shipped a game-jam game with twenty levels, and tuning them by hand took three rounds of guessing. Level Doctor is an agent that does it properly. It writes its own bot players, playtests the game thousands of times, finds out why players lose, and fixes the levels.`,
+  title: `This is Level Doctor. I shipped a game-jam game with twenty levels, and tuning them by hand took three rounds of guessing. Level Doctor is an agent that writes its own bot players, playtests the game thousands of times, finds out why players lose, and fixes the levels.`,
   code: `Step one: the agent writes code. A language model reads the game's rules and writes three bots, casual, regular and expert, as JavaScript. The agent runs them in the real game and feeds the measured pass rates back until skill ranks correctly.${lastOk ? ` Here that took ${lastOk.round} round${lastOk.round > 1 ? 's' : ''}.` : ''}`,
-  run: `Step two: the agent runs its code. The real, unmodified game runs headless with a virtual clock, so a whole level takes a fraction of a second, and the same seed replays byte for byte. ${res.runs.total.toLocaleString('en-US')} playtests, ${createos ? 'inside a CreateOS sandbox provisioned with Stripe Projects' : 'on parallel local workers'}, with a ninety-five percent error bar on every number.`,
+  run: `Step two: it runs its code. The real, unmodified game runs headless with a virtual clock, a fraction of a second per level, and the same seed replays byte for byte. ${res.runs.total.toLocaleString('en-US')} playtests ${createos ? `inside a CreateOS sandbox${stripeOk ? ' provisioned with Stripe Projects' : ''}` : 'on parallel local workers'}, each number with a ninety-five percent error bar.`,
   chaos: `Step three is a metric I couldn't find in any existing tool: the Chaos Ratio. This is ${ch.name}. Same seed, same bot. The only difference: the fourth drop moved by one ten-thousandth of a unit. One run ${ch.a.win ? 'wins' : 'loses'}. The other ${ch.b.win ? 'wins' : 'loses'}.`,
-  chaosChart: `Do that for every level, compare the flip rate to a coin toss, and losses split into two kinds.${dice.length ? ` On ${dice.slice(0, 2).map(l => l.name).join(' and ')}, losses are dice rolls.` : ''}${traps.length ? ` On ${traps.slice(0, 2).map(l => l.name).join(' and ')}, they're reproducible traps a designer can fix.` : ''} Pass rate alone can't tell these apart, and they need completely different fixes.`,
-  tempo: `Step four: twist exposure. This level is called Bass Drop. A bot at typical bot speed clears it in ${tp.fast.time.toFixed(0)} seconds, before the first bass drop at ${tp.firstBass.toFixed(0)}. It says the level is fine without ever hearing its twist. At human speed, the bass drops hit. So Level Doctor's bots play at human tempo, and every twist gets an exposure check.`,
+  chaosChart: `Do that for every level and losses split into two kinds.${dice.length ? ` On ${dice.slice(0, 2).map(l => l.name).join(' and ')}, they're dice rolls.` : ''}${traps.length ? ` On ${traps.slice(0, 2).map(l => l.name).join(' and ')}, they're traps a designer can fix.` : ''} Pass rate alone can't tell them apart.`,
+  tempo: `Step four: twist exposure. This level is called Bass Drop. A bot at typical bot speed clears it in ${tp.fast.time.toFixed(0)} seconds, before the first bass drop. It calls the level fine without ever hearing its twist. Level Doctor's bots play at human speed, and every twist gets an exposure check.`,
   stack: `Here's the stack.${stripeOk ? ' Stripe Projects set it up from the terminal: init, add CreateOS, and the credentials land in the env file.' : ''} Every batch runs in a CreateOS sandbox with its network locked down, because the bots are code an LLM wrote. A request from inside the sandbox fails. And the same seed gives the same result in the sandbox as on my laptop, hash for hash.`,
-  fix: `Finally, the fix. For each off-target level, the agent plays one batch with unlimited drops, reads the pass rate for every possible drop limit straight off the survival curve, picks the limit that hits the target, and verifies it with fresh seeds. ${patched.length ? `${patched.length} level${patched.length > 1 ? 's' : ''} re-tuned, and ${verified.length} of them verified within error bars of the target.` : 'Every level landed inside the target band.'}`,
-  orbital: orbital ? `And it isn't tied to one game. Same agent, an endless arcade game: it wrote new bots, measured survival curves, and tuned its difficulty dial so a regular player reaches ${orbital.passT} seconds half the time${orbital.verify.inBand ? ', verified with fresh seeds' : ''}.` : '',
+  fix: `Finally, the fix. One batch with unlimited drops gives the pass rate for every possible drop limit. The agent picks the limit that hits the target and re-tests it with fresh seeds. ${patched.length ? `${patched.length} level${patched.length > 1 ? 's' : ''} re-tuned, ${verified.length} verified within error bars.` : 'Every level landed inside the target band.'}`,
+  orbital: orbital ? `And it isn't tied to one game. On an endless arcade game, the same agent wrote new bots, found which difficulty knob actually matters, and tuned it so a regular player reaches ${orbital.passT} seconds about half the time${orbital.verify.inBand ? ', verified' : ''}.` : '',
   outro: `Level Doctor. Ten years of triple-A playtesting research, in five minutes, for indie web games. ${createos ? 'Built on CreateOS and Stripe Projects.' : 'Built for CreateOS and Stripe Projects.'}`,
 }
 const order = ['title', 'code', 'run', 'stack', 'chaos', 'chaosChart', 'tempo', 'fix', ...(orbital ? ['orbital'] : []), 'outro']
@@ -56,10 +58,23 @@ const order = ['title', 'code', 'run', 'stack', 'chaos', 'chaosChart', 'tempo', 
 const durations = {}
 for (const k of order) {
   const file = path.join(WORK, 'audio', `${k}.mp3`)
-  execFileSync('python', ['-m', 'edge_tts', '--voice', VOICE, '--rate', '+4%', '--text', say[k], '--write-media', file], { stdio: 'pipe' })
+  const cached = path.join(DEMO, 'tts-cache', createHash('sha1').update(VOICE + '|' + say[k]).digest('hex') + '.mp3')
+  if (existsSync(cached)) await copyFile(cached, file)
+  else for (let attempt = 1; ; attempt++) {   // the online voice drops connections now and then; fall back to the offline Windows voice
+    try { execFileSync('python', ['-m', 'edge_tts', '--voice', VOICE, '--rate', '+4%', '--text', say[k], '--write-media', file], { stdio: 'pipe', timeout: 60000 }); await mkdir(path.dirname(cached), { recursive: true }); await copyFile(file, cached); break }
+    catch (e) {
+      if (attempt < 3) { await new Promise(r => setTimeout(r, 3000 * attempt)); continue }
+      const txt = path.join(WORK, 'audio', `${k}.txt`), wav = path.join(WORK, 'audio', `${k}.wav`)
+      await writeFile(txt, say[k])
+      execFileSync('powershell', ['-NoProfile', '-Command', `Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.SelectVoice('Microsoft David Desktop'); $s.Rate = 1; $s.SetOutputToWaveFile('${wav}'); $s.Speak((Get-Content -Raw '${txt}')); $s.Dispose()`], { stdio: 'pipe' })
+      execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', wav, file], { stdio: 'pipe' })
+      console.log(`  ${k}: online voice unavailable, used the offline Windows voice`)
+      break
+    }
+  }
   durations[k] = +execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file]).toString().trim()
 }
-const PAD = { title: 1.2, stack: 1.2, chaos: 2.5, tempo: 2.0, outro: 2.5 }
+const PAD = { title: 1.0, stack: 1.0, chaos: 2.0, tempo: 1.5, outro: 1.5 }
 const timeline = order.map(k => ({ scene: k, dur: +(durations[k] + (PAD[k] ?? 0.8)).toFixed(2), say: say[k], audio: durations[k], lead: k === 'title' ? 0.6 : 0.3 }))
 const total = timeline.reduce((a, s) => a + s.dur, 0)
 console.log('narration', order.map(k => `${k} ${durations[k].toFixed(1)}s`).join(' · '), `→ ${total.toFixed(1)} s total`)
@@ -85,6 +100,7 @@ const stage = {
   stack: [
     ...(stripeOk ? ['$ stripe projects init leveldoctor', '$ stripe projects add createos/project', '$ stripe projects env --pull     # credentials → .env'] : []),
     ...(sbCheck ? [`sandbox ${sbCheck.sandbox} · devbox:1 · node ${sbCheck.node}`, `egress allowlist: ${JSON.stringify(sbCheck.isolation.egress)}`, '$ curl https://example.com        # from inside the sandbox', `  → ${sbCheck.isolation.blocked ? 'BLOCKED ✓' : 'open'}  ${sbCheck.isolation.detail.slice(0, 58)}`, `same seeds, sandbox vs laptop → ${sbCheck.identical}/${sbCheck.runs} identical ✓`] : []),
+    ...(cross ? [`full diagnosis: ${cross.runs[0].toLocaleString('en-US')} playtests in the sandbox → ${cross.levelsIdentical}/${cross.levels} levels identical to local ✓`] : []),
   ],
   backendLabel: createos ? 'inside a CreateOS sandbox' : 'on local workers',
   chaosBullets: [
@@ -96,17 +112,21 @@ const stage = {
   timeline, total, url: process.env.LD_URL || '',
 }
 await writeFile(path.join(DEMO, 'stage-data.js'), 'window.STAGE = ' + JSON.stringify(stage).replace(/</g, '\\u003c'))
-const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 }, recordVideo: { dir: WORK, size: { width: 1280, height: 720 } } })
-const page = await ctx.newPage()
-const tOpen = Date.now()
+// Frame-by-frame capture on a virtual clock: set the time, screenshot, repeat. Live screen recording drops
+// frames under load and drifts against the narration; this can't.
+const FPS = 24, frames = path.join(WORK, 'frames')
+await mkdir(frames, { recursive: true })
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } })
 await page.goto(pathToFileURL(path.join(DEMO, 'stage.html')).href)
 await page.waitForFunction('window.READY === true', null, { timeout: 30000 })
-await page.waitForTimeout(800)
-const offset = (Date.now() - tOpen) / 1000
-await page.evaluate('window.START()')
-await page.waitForFunction('window.DONE === true', null, { timeout: (total + 30) * 1000, polling: 500 })
-const video = await page.video().path()
-await ctx.close(); await browser.close()
+await page.waitForTimeout(500)   // fonts
+const nFrames = Math.ceil(total * FPS)
+for (let i = 0; i < nFrames; i++) {
+  await page.evaluate(t => window.renderAt(t), i / FPS)
+  await page.screenshot({ path: path.join(frames, `${String(i).padStart(5, '0')}.jpg`), type: 'jpeg', quality: 90 })
+  if (i % (FPS * 20) === 0) process.stdout.write(`  frames ${i}/${nFrames}\n`)
+}
+await browser.close()
 
 // ---------- audio mix + mux ----------
 const inputs = [], filters = []
@@ -119,6 +139,6 @@ filters.push(`${mixIn}amix=inputs=${order.length + (existsSync(music) ? 1 : 0)}:
 const wav = path.join(WORK, 'mix.wav')
 execFileSync('ffmpeg', ['-y', ...inputs, '-filter_complex', filters.join(';'), '-map', '[out]', '-t', total.toFixed(2), wav], { stdio: 'pipe' })
 const mp4 = path.join(DEMO, 'leveldoctor-demo.mp4')
-execFileSync('ffmpeg', ['-y', '-ss', offset.toFixed(2), '-i', video, '-i', wav, '-map', '0:v', '-map', '1:a', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-r', '30', '-c:a', 'aac', '-b:a', '160k', '-t', total.toFixed(2), mp4], { stdio: 'pipe' })
+execFileSync('ffmpeg', ['-y', '-framerate', String(FPS), '-i', path.join(frames, '%05d.jpg'), '-i', wav, '-map', '0:v', '-map', '1:a', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '160k', '-t', total.toFixed(2), mp4], { stdio: 'pipe' })
 await writeFile(path.join(DEMO, 'narration.txt'), order.map(k => `[${k}] ${say[k]}`).join('\n\n'))
-console.log(`video → ${path.relative(ROOT, mp4)} (${total.toFixed(1)} s, recording offset ${offset.toFixed(2)} s)`)
+console.log(`video → ${path.relative(ROOT, mp4)} (${total.toFixed(1)} s, ${nFrames} frames at ${FPS} fps)`)

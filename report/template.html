@@ -76,7 +76,7 @@ details summary { cursor: pointer; color: var(--text-secondary); }
   <div class="two">
     <section class="card">
       <h2>Chaos Ratio: luck or a fixable trap?</h2>
-      <p class="lede">Each run is replayed with one drop nudged by 0.0001 units, far below a pixel. If the outcome flips as often as a fresh coin toss would, losses are dice rolls (C ≈ 1). If it never flips, losses are reproducible traps a designer can fix (C ≈ 0). Pass rate alone can't tell these apart.</p>
+      <p class="lede">Each run is replayed with one drop nudged by 0.0001 units, far below a pixel. If the outcome flips as often as a fresh coin toss would, losses are dice rolls (C ≈ 1). If it never flips, losses are reproducible traps a designer can fix (C ≈ 0). Pass rate alone can't tell these apart. Measured for the regular bot: a different play style can score the same level differently.</p>
       <div id="chaos"></div>
     </section>
     <section class="card">
@@ -249,7 +249,7 @@ if (orbital) {
   const sensRows = (O.sensitivity || []).map(s => `<tr><td>${s.knob}${s.knob === O.knob ? ' <span class="pill ok">tuned</span>' : s.effect < 0.08 ? ' <span class="flag">barely matters</span>' : ''}</td><td class="num">${s.base}</td><td class="num">${s.values.map((v, i) => `${v} → ${pct(s.pass[i])}`).join(' · ')}</td><td class="num">${Math.round(s.effect * 100)} pts</td></tr>`).join('')
   const sensTable = sensRows ? `<h3 style="margin:18px 0 6px;font-size:15px">Which knob actually changes difficulty? (regular bot, share reaching ${O.passT} s)</h3><table><tr><th>Knob</th><th>Game value</th><th>Moved down / up</th><th>Biggest effect</th></tr>${sensRows}</table>` : ''
   $('orbtable').innerHTML = sensTable + `<table style="margin-top:14px"><tr><th>Bot</th><th>Reaches ${O.passT} s</th><th>Median survival</th></tr>${P.map(p => `<tr><td>${p}</td><td class="num">${pct(O.personas[p].pass.p)} <span class="flag">[${pct(O.personas[p].pass.lo)}–${pct(O.personas[p].pass.hi)}]</span></td><td class="num">${O.personas[p].median.toFixed(1)} s</td></tr>`).join('')}</table>
-  <p class="flag" style="margin-top:10px">Chaos Ratio (whole game shifted 1 ms at 2 s): C = ${O.chaos?.C != null ? O.chaos.C.toFixed(2) : '–'}${O.chaos?.changed != null ? `: the shift changed ${pct(O.chaos.changed)} of runs but ${O.chaos.flips ? `flipped ${O.chaos.flips}` : 'flipped none'}, so losses here are learnable patterns, not dice rolls` : ''}. Difficulty dial: ${O.baseLabel} → <b>${O.patchLabel}</b>, verified with fresh seeds: ${pct(O.verify.p)} [${pct(O.verify.lo)}–${pct(O.verify.hi)}] reach ${O.passT} s (target ${pct(O.target)}) ${O.verify.inBand ? '✓' : '✗'}</p>`
+  <p class="flag" style="margin-top:10px">Chaos Ratio (whole game shifted 1 ms at 2 s): C = ${O.chaos?.C != null ? O.chaos.C.toFixed(2) : '–'}${O.chaos?.changed != null ? `: the shift changed ${pct(O.chaos.changed)} of runs but ${O.chaos.flips ? `flipped ${O.chaos.flips}` : 'flipped none'}, so losses here are learnable patterns, not dice rolls` : ''}. Patch: ${O.baseLabel} → <b>${O.patchLabel}</b>, verified with fresh seeds: ${pct(O.verify.p)} [${pct(O.verify.lo)}–${pct(O.verify.hi)}] reach ${O.passT} s (target ${pct(O.target)}) ${O.verify.inBand ? '✓' : '✗'}</p>`
 }
 
 // ---------- sandbox proof ----------
@@ -257,7 +257,9 @@ if (sandbox) {
   $('sbcard').style.display = ''
   $('sbproof').textContent = [`CreateOS sandbox ${sandbox.sandbox} · devbox:1 · node ${sandbox.node}`, `egress allowlist: ${JSON.stringify(sandbox.isolation.egress)}`,
     `curl https://example.com from inside → ${sandbox.isolation.blocked ? 'BLOCKED' : 'OPEN'} (${sandbox.isolation.detail})`,
-    `same seeds in the sandbox and on a laptop → ${sandbox.identical}/${sandbox.runs} byte-identical runs`, `checked ${new Date(sandbox.at).toLocaleString()}`].join('\n')
+    `same seeds in the sandbox and on a laptop → ${sandbox.identical}/${sandbox.runs} byte-identical runs`,
+    ...(sandbox.cross ? [`full diagnosis, ${sandbox.cross.runs[0].toLocaleString()} playtests in the sandbox vs ${sandbox.cross.runs[1].toLocaleString()} locally → ${sandbox.cross.levelsIdentical}/${sandbox.cross.levels} levels identical`] : []),
+    `checked ${new Date(sandbox.at).toLocaleString()}`].join('\n')
 }
 
 // ---------- bots ----------

@@ -102,13 +102,13 @@ const stage = {
   traces, bots: bots.replace(/^\/\/.*\n/, ''), llm: res.llm, rounds: roundsText, totalRuns: res.runs.total, runLog, terminal, stream: stream?.chunks || null,
   stack: [
     ...(stripeOk ? ['$ stripe projects init leveldoctor', '$ stripe projects add createos/project', '$ stripe projects env --pull     # credentials → .env'] : []),
-    ...(sbCheck ? [`sandbox ${sbCheck.sandbox} · devbox:1 · node ${sbCheck.node}`, `egress allowlist: ${JSON.stringify(sbCheck.isolation.egress)}`, '$ curl https://example.com        # from inside the sandbox', `  → ${sbCheck.isolation.blocked ? 'BLOCKED ✓' : 'open'}  ${sbCheck.isolation.detail.slice(0, 58)}`, `same seeds, sandbox vs laptop → ${sbCheck.identical}/${sbCheck.runs} identical ✓`] : []),
+    ...(sbCheck ? [`sandbox ${sbCheck.sandbox} · devbox:1 · node ${sbCheck.node}`, `egress allowlist: ${JSON.stringify(sbCheck.isolation.egress)}`, '$ curl https://example.com        # from inside the sandbox', `  → ${sbCheck.isolation.blocked ? 'BLOCKED ✓' : 'open'}  ${sbCheck.isolation.detail.replace(/ in connection to .*/, '')}`, `same seeds, sandbox vs laptop → ${sbCheck.identical}/${sbCheck.runs} identical ✓`] : []),
     ...(cross ? [`full diagnosis: ${cross.runs[0].toLocaleString('en-US')} playtests in the sandbox → ${cross.levelsIdentical}/${cross.levels} levels identical to local ✓`] : []),
   ],
   backendLabel: createos ? 'inside a CreateOS sandbox' : 'on local workers',
   chaosBullets: [
     ...dice.slice(0, 3).map(l => `🎲 <b>${l.name}</b>: C = ${l.chaos.C.toFixed(2)}. Losses are dice rolls: soften the chaos, not the drop limit.`),
-    ...traps.slice(0, 2).map(l => `🪤 <b>${l.name}</b>: C = ${l.chaos.C.toFixed(2)}. Losses are reproducible traps: find them and fix them.`),
+    ...traps.slice(0, 2).map(l => `🔧 <b>${l.name}</b>: C = ${l.chaos.C.toFixed(2)}. Losses are reproducible traps: find them and fix them.`),
   ],
   tempoText: `Bot speed: cleared in ${tp.fast.time.toFixed(1)} s. The first bass drop comes at ${tp.firstBass.toFixed(1)} s. It never happened.<br><br>Human speed: ${tp.slow.time.toFixed(1)} s, with every bass drop.`,
   fixBadges: [`${res.runs.total.toLocaleString('en-US')} playtests`, `${patched.length} levels re-tuned`, `${verified.length} verified in band`, `funnel: ${Math.round(res.funnel.before.at(-1) * 100)}% → ${Math.round(res.funnel.after.at(-1) * 100)}% finish`],

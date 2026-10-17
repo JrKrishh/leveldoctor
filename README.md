@@ -42,6 +42,20 @@ Patch → verify with fresh seeds → report page served from the sandbox's live
 - **Error bars everywhere.** Every pass rate carries a 95% interval; patches count as verified only when the interval reaches the target band.
 - **Churn funnel.** A mixed population (40% casual × 3 tries, 40% regular × 5, 20% expert × 8) shows where players would quit, before vs after.
 
+## How the agent fixed its own bots (the real log)
+
+Every round: the LLM writes the module, the agent runs it in the sandbox on 7 test levels × 3 bots × 16 seeds, then sends back what a tester would report (pass rates, why runs ended, goal left over, how varied the drops were).
+
+| Round | Casual · Regular · Expert | What the agent told the LLM |
+|---|---|---|
+| 1 | crashed | `Cannot read properties of undefined (reading 'x')` in two bots |
+| 2 | 78% · 68% · 68% | both skilled bots broken on *Frozen Friends* (ice goal): worse than random play |
+| 3 | 78% · 74% · 76% | regular bot still broken on *Frozen Friends* |
+| 4 | 78% · 84% · 80% | expert below regular: improve its scoring |
+| 5 | 78% · 85% · 86% | ✓ skill ranks correctly, no broken levels |
+
+An earlier attempt taught the agent something too: the LLM's expert scored drop positions at the height where a monster *spawns* instead of where it *lands*, so it never saw a merge. The fix wasn't to hand-write the bot, it was to give the observation API a `landY(x)` helper (what the in-game aim guide shows a player) and better diagnostics.
+
 ## Results on Mash Pit (final run, Oct 18)
 
 - **6,560 playtests inside the CreateOS sandbox** (709 s on one vCPU). The same run on local workers matched it **20/20 levels, number for number**: same seeds, same results, Linux sandbox vs Windows laptop.

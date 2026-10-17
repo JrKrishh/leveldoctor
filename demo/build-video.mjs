@@ -27,8 +27,9 @@ const stream = await readJson(`out/llm-stream-round${bestRound}.json`)       // 
 const sbCheck = await readJson('out/sandbox-check.json')
 const orbital = await readJson('out/orbital-results.json')
 const cross = await readJson('out/cross-check.json')
-let stripeOk = false
-try { stripeOk = !/Welcome to Stripe Projects/.test(execFileSync('stripe', ['projects', 'status'], { cwd: ROOT, stdio: 'pipe', timeout: 30000 }).toString()) } catch { }
+// LD_ASSUME_STRIPE pre-renders the post-setup variant (files named *-stripe.mp4); it's only used once setup really succeeds
+let stripeOk = !!process.env.LD_ASSUME_STRIPE
+try { if (!stripeOk) stripeOk = !/Welcome to Stripe Projects/.test(execFileSync('stripe', ['projects', 'status'], { cwd: ROOT, stdio: 'pipe', timeout: 30000 }).toString()) } catch { }
 await rm(WORK, { recursive: true, force: true }); await mkdir(path.join(WORK, 'audio'), { recursive: true })
 
 // ---------- facts for the script (all from the results) ----------
@@ -116,6 +117,7 @@ const stage = {
   timeline, total, url: process.env.LD_URL || '', stripeOk, presenter: !!process.env.LD_PRESENTER, reportUrl: existsSync(path.join(ROOT, 'out', 'report-url.txt')) ? (await readFile(path.join(ROOT, 'out', 'report-url.txt'), 'utf8')).trim() : '',
 }
 await writeFile(path.join(DEMO, 'stage-data.js'), 'window.STAGE = ' + JSON.stringify(stage).replace(/</g, '\\u003c'))
+if (process.env.LD_DATA_ONLY) { await browser.close(); console.log(`stage data only (teleprompter timing): ${total.toFixed(1)} s`); process.exit(0) }
 // Frame-by-frame capture on a virtual clock: set the time, screenshot, repeat. Live screen recording drops
 // frames under load and drifts against the narration; this can't.
 const FPS = 24, frames = path.join(WORK, 'frames')
@@ -142,7 +144,7 @@ if (existsSync(music)) { inputs.push('-stream_loop', '-1', '-i', music); filters
 filters.push(`${mixIn}amix=inputs=${order.length + (existsSync(music) ? 1 : 0)}:normalize=0:duration=longest[out]`)
 const wav = path.join(WORK, 'mix.wav')
 execFileSync('ffmpeg', ['-y', ...inputs, '-filter_complex', filters.join(';'), '-map', '[out]', '-t', total.toFixed(2), wav], { stdio: 'pipe' })
-const mp4 = path.join(DEMO, process.env.LD_PRESENTER ? 'leveldoctor-demo-presenter.mp4' : 'leveldoctor-demo.mp4')   // presenter: room for the webcam bubble
+const mp4 = path.join(DEMO, `leveldoctor-demo${process.env.LD_PRESENTER ? '-presenter' : ''}${process.env.LD_ASSUME_STRIPE ? '-stripe' : ''}.mp4`)   // presenter: room for the webcam bubble
 execFileSync('ffmpeg', ['-y', '-framerate', String(FPS), '-i', path.join(frames, '%05d.jpg'), '-i', wav, '-map', '0:v', '-map', '1:a', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '160k', '-t', total.toFixed(2), mp4], { stdio: 'pipe' })
 await writeFile(path.join(DEMO, 'narration.txt'), order.map(k => `[${k}] ${say[k]}`).join('\n\n'))
 console.log(`video → ${path.relative(ROOT, mp4)} (${total.toFixed(1)} s, ${nFrames} frames at ${FPS} fps)`)

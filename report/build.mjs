@@ -15,6 +15,7 @@ let sandbox = null, orbital = null
 try { sandbox = JSON.parse(await readFile(path.join(ROOT, 'out', 'sandbox-check.json'), 'utf8')) } catch { }
 try { orbital = JSON.parse(await readFile(path.join(ROOT, 'out', 'orbital-results.json'), 'utf8')) } catch { }
 try { if (sandbox) sandbox.cross = JSON.parse(await readFile(path.join(ROOT, 'out', 'cross-check.json'), 'utf8')) } catch { }
+try { const cp = JSON.parse(await readFile(path.join(ROOT, 'out', 'chaos-personas.json'), 'utf8')); for (const l of res.levels) l.chaosExpert = cp.levels[l.i] || null } catch { }
 const tpl = await readFile(path.join(ROOT, 'report', 'template.html'), 'utf8')
 const data = JSON.stringify({ res, bots, agent, sandbox, orbital }).replace(/</g, '\\u003c')
 await mkdir(path.join(ROOT, 'report', 'dist'), { recursive: true })

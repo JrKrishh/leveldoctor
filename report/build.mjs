@@ -11,10 +11,11 @@ const polFile = path.join(ROOT, res.policiesFile || 'out/policies.mjs')
 const bots = existsSync(polFile) ? await readFile(polFile, 'utf8') : ''
 let agent = []
 try { agent = (await readFile(path.join(ROOT, 'out', 'agent-log.jsonl'), 'utf8')).split('\n').filter(Boolean).map(l => JSON.parse(l)).filter(e => e.eval).map(e => ({ round: e.round, ok: e.eval.ok, errors: e.eval.errors, table: e.eval.table && Object.fromEntries(Object.entries(e.eval.table).map(([p, t]) => [p, t.overall])) })) } catch { }
-let sandbox = null
+let sandbox = null, orbital = null
 try { sandbox = JSON.parse(await readFile(path.join(ROOT, 'out', 'sandbox-check.json'), 'utf8')) } catch { }
+try { orbital = JSON.parse(await readFile(path.join(ROOT, 'out', 'orbital-results.json'), 'utf8')) } catch { }
 const tpl = await readFile(path.join(ROOT, 'report', 'template.html'), 'utf8')
-const data = JSON.stringify({ res, bots, agent, sandbox }).replace(/</g, '\\u003c')
+const data = JSON.stringify({ res, bots, agent, sandbox, orbital }).replace(/</g, '\\u003c')
 await mkdir(path.join(ROOT, 'report', 'dist'), { recursive: true })
 await writeFile(path.join(ROOT, 'report', 'dist', 'index.html'), tpl.replace('/*__DATA__*/null', data))
 console.log('report → report/dist/index.html')

@@ -23,6 +23,7 @@ const terminal = await readJson('out/doctor-terminal.json', [])            // th
 const bestRound = +(bots.match(/round (\d+)/)?.[1] || 0)
 const stream = await readJson(`out/llm-stream-round${bestRound}.json`)       // the model's real output with timings
 const sbCheck = await readJson('out/sandbox-check.json')
+const orbital = await readJson('out/orbital-results.json')
 let stripeOk = false
 try { stripeOk = !/Welcome to Stripe Projects/.test(execFileSync('stripe', ['projects', 'status'], { cwd: ROOT, stdio: 'pipe', timeout: 30000 }).toString()) } catch { }
 await rm(WORK, { recursive: true, force: true }); await mkdir(path.join(WORK, 'audio'), { recursive: true })
@@ -46,9 +47,10 @@ const say = {
   tempo: `Step four: twist exposure. This level is called Bass Drop. A bot at typical bot speed clears it in ${tp.fast.time.toFixed(0)} seconds, before the first bass drop at ${tp.firstBass.toFixed(0)}. It says the level is fine without ever hearing its twist. At human speed, the bass drops hit. So Level Doctor's bots play at human tempo, and every twist gets an exposure check.`,
   stack: `Here's the stack.${stripeOk ? ' Stripe Projects set it up from the terminal: init, add CreateOS, and the credentials land in the env file.' : ''} Every batch runs in a CreateOS sandbox with its network locked down, because the bots are code an LLM wrote. A request from inside the sandbox fails. And the same seed gives the same result in the sandbox as on my laptop, hash for hash.`,
   fix: `Finally, the fix. For each off-target level, the agent plays one batch with unlimited drops, reads the pass rate for every possible drop limit straight off the survival curve, picks the limit that hits the target, and verifies it with fresh seeds. ${patched.length ? `${patched.length} level${patched.length > 1 ? 's' : ''} re-tuned, and ${verified.length} of them verified within error bars of the target.` : 'Every level landed inside the target band.'}`,
+  orbital: orbital ? `And it isn't tied to one game. Same agent, an endless arcade game: it wrote new bots, measured survival curves, and tuned its difficulty dial so a regular player reaches ${orbital.passT} seconds half the time${orbital.verify.inBand ? ', verified with fresh seeds' : ''}.` : '',
   outro: `Level Doctor. Ten years of triple-A playtesting research, in five minutes, for indie web games. ${createos ? 'Built on CreateOS and Stripe Projects.' : 'Built for CreateOS and Stripe Projects.'}`,
 }
-const order = ['title', 'code', 'run', 'stack', 'chaos', 'chaosChart', 'tempo', 'fix', 'outro']
+const order = ['title', 'code', 'run', 'stack', 'chaos', 'chaosChart', 'tempo', 'fix', ...(orbital ? ['orbital'] : []), 'outro']
 
 // ---------- narration ----------
 const durations = {}
@@ -71,6 +73,7 @@ const browser = await chromium.launch({ executablePath: CHROME })
   const cards = await p.$$('section.card')
   await cards[0].screenshot({ path: path.join(DEMO, 'shots', 'curve.png') })
   await cards[1].screenshot({ path: path.join(DEMO, 'shots', 'chaos.png') })
+  if (orbital) await (await p.$('#orbcard')).screenshot({ path: path.join(DEMO, 'shots', 'orbital.png') })
   await p.close()
 }
 await mkdir(path.join(DEMO, 'mon'), { recursive: true })

@@ -111,6 +111,14 @@ details summary { cursor: pointer; color: var(--text-secondary); }
     <details><summary>Show the bot code</summary><pre id="code"></pre></details>
   </section>
 
+  <section class="card" id="orbcard" style="display:none">
+    <h2>Same agent, different genre: ORBITAL</h2>
+    <p class="lede" id="orblede"></p>
+    <div class="legend"><span><i style="background:var(--series-1)"></i>Casual (random)</span><span><i style="background:var(--series-2)"></i>Regular (reactive)</span><span><i style="background:var(--series-3)"></i>Expert (predictive)</span></div>
+    <div id="orbcurve"></div>
+    <div class="scroll" id="orbtable"></div>
+  </section>
+
   <section class="card" id="sbcard" style="display:none">
     <h2>Where the code ran</h2>
     <p class="lede">The bots are code an LLM wrote, so every batch runs in a CreateOS sandbox with its network locked down.</p>
@@ -125,7 +133,7 @@ details summary { cursor: pointer; color: var(--text-secondary); }
 <div id="tip"></div>
 <script>
 const DATA = /*__DATA__*/null
-const { res, bots, agent, sandbox } = DATA
+const { res, bots, agent, sandbox, orbital } = DATA
 const L = res.levels, n = L.length
 const $ = id => document.getElementById(id)
 const pct = (p, d = 0) => (p * 100).toFixed(d) + '%'
@@ -226,6 +234,23 @@ $('tiles').innerHTML = tiles.map(([b, s]) => `<div class="tile"><b>${b}</b><span
   const st = s => s === 'ok' ? '<span class="pill ok">✓ on target</span>' : s === 'too_hard' ? '<span class="pill hard">▲ too hard</span>' : '<span class="pill easy">▼ too easy</span>'
   $('levels').innerHTML = `<table><tr><th>Level</th><th>Casual</th><th>Regular</th><th>Expert</th><th>Target</th><th>Status</th><th>Chaos C</th><th>Findings</th></tr>${L.map(l => `<tr><td>L${l.i + 1} ${esc(l.name)}</td><td class="num">${pct(l.personas.random.p)}</td><td class="num">${pct(l.personas.greedy.p)} <span class="flag">[${pct(l.personas.greedy.lo)}–${pct(l.personas.greedy.hi)}]</span></td><td class="num">${pct(l.personas.lookahead.p)}</td><td class="num">${pct(l.target)}</td><td>${st(l.status)}</td><td class="num">${l.chaos?.C != null ? l.chaos.C.toFixed(2) : '–'}</td><td class="flag">${l.flags.map(esc).join('<br>')}</td></tr>`).join('')}</table>`
 })()
+
+// ---------- second genre ----------
+if (orbital) {
+  const O = orbital, P = ['random', 'reactive', 'predictive'], cols = ['var(--series-1)', 'var(--series-2)', 'var(--series-3)']
+  $('orbcard').style.display = ''
+  $('orblede').textContent = `An endless arcade game: circle a star, tap to reverse, dodge debris. The same agent wrote three new bots (${O.llm}, round ${O.botsRound}), ran ${O.runs.toLocaleString()} episodes on ${O.backend === 'createos' ? 'the CreateOS sandbox' : 'the local runner'}, scanned which difficulty constant actually matters, and tuned that one so a regular player reaches ${O.passT} s half the time. Bots see the game ${O.reaction} s late, like a human. Survival curves: the share of runs still alive at each second.`
+  const W = 1040, H = 280, m = { l: 44, r: 12, t: 10, b: 30 }, x = t => m.l + t / 60 * (W - m.l - m.r), y = p => m.t + (1 - p) * (H - m.t - m.b)
+  const svg = S('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%', role: 'img', 'aria-label': 'ORBITAL survival curves per bot' }, $('orbcurve'))
+  for (const g of [0, .5, 1]) { S('line', { x1: m.l, x2: W - m.r, y1: y(g), y2: y(g), class: 'grid' }, svg); S('text', { x: m.l - 6, y: y(g) + 4, 'text-anchor': 'end' }, svg).textContent = pct(g) }
+  for (const t of [0, 10, 20, 30, 40, 50, 60]) S('text', { x: x(t), y: H - 10, 'text-anchor': 'middle' }, svg).textContent = t + ' s'
+  S('line', { x1: x(O.passT), x2: x(O.passT), y1: m.t, y2: H - m.b, stroke: 'var(--band-edge)', 'stroke-dasharray': '4 4' }, svg)
+  P.forEach((p, k) => S('path', { d: 'M' + O.personas[p].curve.map((v, t) => `${x(t)},${y(v)}`).join('L'), fill: 'none', stroke: cols[k], 'stroke-width': 2 }, svg))
+  const sensRows = (O.sensitivity || []).map(s => `<tr><td>${s.knob}${s.knob === O.knob ? ' <span class="pill ok">tuned</span>' : s.effect < 0.08 ? ' <span class="flag">barely matters</span>' : ''}</td><td class="num">${s.base}</td><td class="num">${s.values.map((v, i) => `${v} → ${pct(s.pass[i])}`).join(' · ')}</td><td class="num">${Math.round(s.effect * 100)} pts</td></tr>`).join('')
+  const sensTable = sensRows ? `<h3 style="margin:18px 0 6px;font-size:15px">Which knob actually changes difficulty? (regular bot, share reaching ${O.passT} s)</h3><table><tr><th>Knob</th><th>Game value</th><th>Moved down / up</th><th>Biggest effect</th></tr>${sensRows}</table>` : ''
+  $('orbtable').innerHTML = sensTable + `<table style="margin-top:14px"><tr><th>Bot</th><th>Reaches ${O.passT} s</th><th>Median survival</th></tr>${P.map(p => `<tr><td>${p}</td><td class="num">${pct(O.personas[p].pass.p)} <span class="flag">[${pct(O.personas[p].pass.lo)}–${pct(O.personas[p].pass.hi)}]</span></td><td class="num">${O.personas[p].median.toFixed(1)} s</td></tr>`).join('')}</table>
+  <p class="flag" style="margin-top:10px">Chaos Ratio (whole game shifted 1 ms at 2 s): C = ${O.chaos?.C != null ? O.chaos.C.toFixed(2) : '–'}${O.chaos?.changed != null ? `: the shift changed ${pct(O.chaos.changed)} of runs but ${O.chaos.flips ? `flipped ${O.chaos.flips}` : 'flipped none'}, so losses here are learnable patterns, not dice rolls` : ''}. Difficulty dial: ${O.baseLabel} → <b>${O.patchLabel}</b>, verified with fresh seeds: ${pct(O.verify.p)} [${pct(O.verify.lo)}–${pct(O.verify.hi)}] reach ${O.passT} s (target ${pct(O.target)}) ${O.verify.inBand ? '✓' : '✗'}</p>`
+}
 
 // ---------- sandbox proof ----------
 if (sandbox) {

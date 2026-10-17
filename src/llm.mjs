@@ -1,22 +1,10 @@
 // LLM access, first provider with a key wins: OpenRouter (provisioned by `stripe projects add openrouter/api`),
 // Nebius Token Factory, then a local Ollama model. Keys come from the environment or .env / .env.local (never logged).
-import { readFileSync, existsSync } from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-for (const f of ['.env', '.env.local']) {
-  const p = path.join(ROOT, f)
-  if (!existsSync(p)) continue
-  for (const line of readFileSync(p, 'utf8').split(/\r?\n/)) {
-    const m = line.match(/^\s*(?:export\s+)?([A-Z0-9_]+)\s*=\s*(.*)\s*$/)
-    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '')
-  }
-}
+import './env.mjs'
 
 const PROVIDERS = {
   openrouter: { key: 'OPENROUTER_API_KEY', url: 'https://openrouter.ai/api/v1', model: 'qwen/qwen3-coder:free' },
-  nebius: { key: 'NEBIUS_API_KEY', url: process.env.NEBIUS_BASE_URL || 'https://api.tokenfactory.nebius.com/v1', model: 'Qwen/Qwen3-Coder-480B-A35B-Instruct' },
+  nebius: { key: 'NEBIUS_API_KEY', url: process.env.NEBIUS_BASE_URL || 'https://api.tokenfactory.nebius.com/v1', model: 'Qwen/Qwen3-235B-A22B-Instruct-2507' },
 }
 const provider = () => process.env.LD_PROVIDER || Object.keys(PROVIDERS).find(k => process.env[PROVIDERS[k].key]) || 'ollama'
 const model = () => process.env.LD_MODEL || (PROVIDERS[provider()]?.model ?? (process.env.LD_OLLAMA_MODEL || 'qwen3:4b'))
@@ -29,15 +17,16 @@ export async function chat(messages, { maxTokens = 3000 } = {}) {
     const res = await fetch(`${p.url}/chat/completions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${process.env[p.key]}`, 'Content-Type': 'application/json', 'X-Title': 'Level Doctor' },
-      body: JSON.stringify({ model: model(), messages, max_tokens: maxTokens, temperature: 0.4 }),
+      body: JSON.stringify({ model: model(), messages, max_tokens: Math.max(maxTokens, 8000), temperature: 0.4 }),
     })
     if (!res.ok) throw new Error(`${provider()} ${res.status}: ${(await res.text()).slice(0, 300)}`)
     text = (await res.json()).choices?.[0]?.message?.content || ''
   } else {
     const res = await fetch('http://localhost:11434/api/chat', {   // streamed: a slow local model must not hit fetch's header timeout
       method: 'POST',
-      body: JSON.stringify({ model: model(), stream: true, think: false, messages,
-        options: { num_predict: maxTokens, num_ctx: 5120, temperature: 0.4 } }),
+      body: JSON.stringify({ model: model(), stream: true, think: false,   // qwen3 ignores think:false on this Ollama; /no_think does work
+        messages: messages.map((m, i) => i === messages.length - 1 && m.role === 'user' ? { ...m, content: m.content + ' /no_think' } : m),
+        options: { num_predict: Math.max(maxTokens, 4500), num_ctx: 6144, temperature: 0.4 } }),
     })
     if (!res.ok) throw new Error(`ollama ${res.status}: ${(await res.text()).slice(0, 300)}`)
     text = ''

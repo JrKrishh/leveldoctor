@@ -25,7 +25,10 @@ OBSERVATION object o passed to a bot each time it must drop:
 { cur: tier in hand, next: tier after that or null (hidden), dropsLeft, score, time,
   left, right: inner pit walls (x), lineY, floorY, dropY, radius: [r per tier],
   goal, mods, progress: {highestTier, mashed},
-  mons: [{tier, x, y, ice}], gifts: [{x, y}] }
+  mons: [{tier, x, y, ice}], gifts: [{x, y}],
+  landY(x, tier = o.cur): the y where a monster of that tier dropped at x would first touch the pile (like the in-game aim guide),
+  clampX(x, tier = o.cur): x clamped so the monster fits inside the walls }
+A monster spawns at dropY (the top) and falls; judge a drop by where it LANDS (o.landY), not where it spawns.
 A bot is a function (o, rng) => x. rng() returns a uniform number in [0,1); use it instead of Math.random.
 The game clamps x so the monster stays inside the walls.`
 }
@@ -44,7 +47,11 @@ Reply with the module in ONE \`\`\`js code block.`
 async function log(entry) { await mkdir(OUT, { recursive: true }); await appendFile(path.join(OUT, 'agent-log.jsonl'), JSON.stringify({ at: new Date().toISOString(), ...entry }) + '\n') }
 
 /** Smoke test + monotonicity check in the runner. Returns { ok, table, errors }. */
-export async function evaluate(file, { levels = [0, 8, 14], n = 24, tempo = 1.2 } = {}) {
+// One test level per goal type and twist family, so a bot can't pass by being good at one kind of level only.
+export const TEST_LEVELS = [2, 4, 6, 8, 12, 15, 19]
+const COLLAPSE = 0.25   // a skilled bot this far below random play on any level is broken there
+
+export async function evaluate(file, { levels = TEST_LEVELS, n = 16, tempo = 1.2 } = {}) {
   const tasks = []
   for (const level of levels) for (const policy of PERSONAS) for (let seed = 1; seed <= n; seed++) tasks.push({ level, policy, seed, tempo })
   const { rows, backend, ms } = await runBatch(tasks, file, { name: 'monotonicity' })
@@ -56,18 +63,27 @@ export async function evaluate(file, { levels = [0, 8, 14], n = 24, tempo = 1.2 
     for (const l of levels) { const m = mine.filter(r => r.level === l); table[p][l] = wilson(m.filter(r => r.win).length, m.length) }
   }
   const [a, b, c] = PERSONAS.map(p => table[p].overall.p)
-  return { ok: !errors.length && a < b && b < c, table, errors, backend, ms, runs: rows.length }
+  const collapses = []
+  for (const l of levels) for (const p of ['greedy', 'lookahead']) if (table[p][l].p < table.random[l].p - COLLAPSE) collapses.push({ level: l, policy: p, p: table[p][l].p, random: table.random[l].p })
+  // What a human tester would report about each bot on each level: how runs ended, goal left over, drop spread.
+  const diag = {}
+  for (const p of PERSONAS) for (const l of levels) {
+    const m = rows.filter(r => r.policy === p && r.level === l), avg = k => (m.reduce((s, r) => s + (r[k] || 0), 0) / Math.max(1, m.length)).toFixed(1)
+    const ends = {}; for (const r of m) ends[r.reason] = (ends[r.reason] || 0) + 1
+    diag[`${p}|${l}`] = `ended: ${JSON.stringify(ends)}, drops used avg ${avg('drops')}, drop-x spread (SD) ${avg('xsd')} px, at the end: frozen left ${avg('iceLeft')}, gifts left ${avg('giftsLeft')}, mashes ${avg('mashed')}, highest tier ${avg('highestTier')}`
+  }
+  return { ok: !errors.length && a < b && b < c && !collapses.length, table, errors, collapses, diag, backend, ms, runs: rows.length }
 }
 
 const fmt = t => PERSONAS.map(p => `${p}: overall ${(t[p].overall.p * 100).toFixed(0)}% [${Object.entries(t[p]).filter(([k]) => k !== 'overall').map(([k, v]) => `L${+k + 1} ${(v.p * 100).toFixed(0)}%`).join(', ')}]`).join('\n')
 
-export async function writePolicies({ levels, tiers, rounds = 4, onEvent = () => {} }) {
+export async function writePolicies({ levels, tiers, rounds = 6, onEvent = () => {} }) {
   const file = path.join(OUT, 'policies.mjs')
   const messages = [
     { role: 'system', content: 'You are a senior game AI programmer. You write small, correct, dependency-free JavaScript.' },
     { role: 'user', content: gameBrief(levels, tiers) + '\n\n' + TASK },
   ]
-  let best = null
+  let best = null, prevCode = null
   for (let round = 1; round <= rounds; round++) {
     onEvent({ type: 'llm', round, model: llmName() })
     const { text, ms, model } = await chat(messages)
@@ -91,8 +107,12 @@ export async function writePolicies({ levels, tiers, rounds = 4, onEvent = () =>
     if (ev.ok) break
     const feedback = ev.errors.length
       ? `Running your bots failed:\n${ev.errors.join('\n')}\nFix the bugs and reply with the full module.`
-      : `Measured pass rates (n=24 runs per level per bot, real game):\n${fmt(ev.table)}\nRequired: random < greedy < lookahead overall. ${ev.table.greedy.overall.p <= ev.table.random.overall.p ? 'greedy is not better than random: it probably stacks too high or ignores the goal. ' : ''}${ev.table.lookahead.overall.p <= ev.table.greedy.overall.p ? 'lookahead is not better than greedy: improve its scoring (pile height, merges, goal objects, next piece). ' : ''}Improve the weaker bots and reply with the full module.`
-    messages.push({ role: 'assistant', content: '```js\n' + code + '\n```' }, { role: 'user', content: feedback })
+      : `Measured pass rates (n=16 runs per level per bot, real game):\n${fmt(ev.table)}\nRequired: random < greedy < lookahead overall, and no skilled bot far below random play on any level. ${ev.table.greedy.overall.p <= ev.table.random.overall.p ? 'greedy is not better than random: it probably stacks too high or ignores the goal. ' : ''}${ev.table.lookahead.overall.p <= ev.table.greedy.overall.p ? 'lookahead is not better than greedy: improve its scoring (pile height, merges, goal objects, next piece). ' : ''}\n${ev.collapses.map(c => `BROKEN: on L${c.level + 1} ${levels[c.level].name} (goal ${JSON.stringify(levels[c.level].goal)}, mods ${JSON.stringify(levels[c.level].mods)}) ${c.policy} wins ${(c.p * 100).toFixed(0)}% but random play wins ${(c.random * 100).toFixed(0)}%.\n  ${c.policy}: ${ev.diag[`${c.policy}|${c.level}`]}\n  random: ${ev.diag[`random|${c.level}`]}\n  Find the bug in how ${c.policy} handles this goal.`).join('\n')}\nImprove the weaker bots and reply with the full module.`
+    const weakest = ev.table && TEST_LEVELS.map(l => ({ l, gap: ev.table.lookahead[l].p - Math.max(ev.table.greedy[l].p, ev.table.random[l].p) })).sort((a, b) => a.gap - b.gap).slice(0, 2)
+    const extra = (weakest && !ev.errors.length ? '\nWhere the expert is weakest:\n' + weakest.map(({ l }) => `  L${l + 1} ${levels[l].name}: lookahead ${ev.diag[`lookahead|${l}`]}`).join('\n') : '') +
+      (prevCode === code ? '\nNOTE: your module is identical to the previous one. Change the logic, not just the comments.' : '')
+    prevCode = code
+    messages.push({ role: 'assistant', content: '```js\n' + code + '\n```' }, { role: 'user', content: feedback + extra })
   }
   if (!best) throw new Error('the LLM never produced runnable bots')
   await writeFile(file, `// Written by ${best.model}, round ${best.round} (monotonic: ${best.ev.ok})\n${best.code}`)

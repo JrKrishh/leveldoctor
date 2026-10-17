@@ -1,5 +1,6 @@
 // One interface, two backends. `createos`: the batch runs inside a CreateOS sandbox (one reused sandbox).
 // `local`: the same batch.mjs in child processes on this machine. Every result line records where it ran.
+import './env.mjs'
 import { spawn } from 'node:child_process'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
@@ -41,25 +42,43 @@ function runLocal(jobFile) {
 const parse = text => text.split('\n').filter(Boolean).map(l => JSON.parse(l))
 
 // ---------- CreateOS sandbox ----------
+// The bots are LLM-written code, so the sandbox gets no network at all. An empty allowlist means "allow all",
+// so the allowlist names one host that can't resolve: everything else is blocked.
+const NO_EGRESS = ['egress-blocked.invalid:443']
 let sandboxP = null
 export async function getSandbox() {
   if (sandboxP) return sandboxP
   sandboxP = (async () => {
     const { CreateosSandboxClient } = await import('@nodeops-createos/sandbox')
-    const client = new CreateosSandboxClient({ apiKey: createosKey() })
+    const client = new CreateosSandboxClient({ apiKey: createosKey(), baseUrl: process.env.CREATEOS_SANDBOX_BASE_URL || 'https://api-eu.sb.createos.sh' })
     if (existsSync(SANDBOX_FILE)) {   // free plan: 10 sandboxes a day, so reuse one all night
       try {
         const sb = await client.getSandbox((await readFile(SANDBOX_FILE, 'utf8')).trim())
         if (sb.status === 'paused') await sb.resume()
-        if (['running', 'paused'].includes(sb.status) || (await sb.refresh()).status === 'running') return sb
+        if (['running', 'paused'].includes(sb.status) || (await sb.refresh()).status === 'running') { await sb.setEgress(NO_EGRESS); return sb }
       } catch { }
     }
-    const sb = await client.createSandbox({ shape: 's-1vcpu-1gb', rootfs: 'devbox:1', auto_pause_after_seconds: 900 })
+    const sb = await client.createSandbox({ shape: 's-1vcpu-1gb', rootfs: 'devbox:1', egress: NO_EGRESS, ingress_enabled: true, auto_pause_after_seconds: 900 })
     await writeFile(SANDBOX_FILE, sb.id)
-    await sb.runCommand('mkdir', ['-p', '/work/src', '/work/build', '/work/out/jobs'])
+    await sb.runCommand('mkdir', ['-p', '/work/src', '/work/build', '/work/out/jobs', '/work/site'])
     return sb
   })()
   return sandboxP
+}
+
+/** Proves the lockdown: an outbound request from inside the sandbox must fail. */
+export async function checkIsolation() {
+  const sb = await getSandbox()
+  const { result } = await sb.runCommand('curl', ['-sS', '-m', '6', '-o', '/dev/null', '-w', '%{http_code}', 'https://example.com'], { timeoutMs: 20_000 })
+  return { blocked: result.exit_code !== 0, exit: result.exit_code, detail: (result.stderr || result.stdout || '').trim().slice(0, 160), egress: (await sb.getEgress()).egress }
+}
+
+/** Serves the report from the sandbox's public URL (ingress); the sandbox wakes on request after auto-pause. */
+export async function serveReport(htmlFile) {
+  const sb = await getSandbox()
+  await sb.files.upload('/work/site/index.html', await readFile(htmlFile))
+  await sb.processes.create({ cmd: 'python3', args: ['-m', 'http.server', '8080', '--directory', '/work/site'] })
+  return sb.previewUrl(8080)
 }
 
 const uploaded = new Map()

@@ -37,14 +37,25 @@ const DT = 1 / 60
 
 // What a bot sees: the same information a player sees on screen.
 export function observe() {
-  const s = G.s, L = G.LEVELS[s.level]
+  const s = G.s, L = G.LEVELS[s.level], radius = G.TIERS.map(t => t.r)
+  const mons = [...G.mons].map(m => ({ tier: m.tier, x: m.b.position.x, y: m.b.position.y, ice: m.ice }))
+  const gifts = [...G.gifts].map(g => ({ x: g.b.position.x, y: g.b.position.y }))
+  const clampX = (x, tier = s.cur) => Math.max(s.LEFT + radius[tier] + 1, Math.min(s.RIGHT - radius[tier] - 1, x))
+  // Where a monster dropped at x would first touch the pile (what the in-game aim guide shows a player).
+  const landY = (x, tier = s.cur) => {
+    const r = radius[tier], cx = clampX(x, tier)
+    let y = G.FLOOR - r
+    for (const o of [...mons.map(m => ({ x: m.x, y: m.y, r: radius[m.tier] })), ...gifts.map(g => ({ x: g.x, y: g.y, r: 24 }))]) {
+      const d = r + o.r, dx = Math.abs(o.x - cx)
+      if (dx < d) y = Math.min(y, o.y - Math.sqrt(d * d - dx * dx))
+    }
+    return y
+  }
   return {
     cur: s.cur, next: s.mods.fog ? null : s.nxt, dropsLeft: s.dropsLeft, score: s.score, time: s.clockT,
     left: s.LEFT, right: s.RIGHT, lineY: G.LINE, floorY: G.FLOOR, dropY: G.DROP_Y,
-    radius: G.TIERS.map(t => t.r),
-    goal: L.goal, mods: s.mods, progress: { highestTier: s.highestTier, mashed: s.mashed },
-    mons: [...G.mons].map(m => ({ tier: m.tier, x: m.b.position.x, y: m.b.position.y, ice: m.ice })),
-    gifts: [...G.gifts].map(g => ({ x: g.b.position.x, y: g.b.position.y })),
+    radius, goal: L.goal, mods: s.mods, progress: { highestTier: s.highestTier, mashed: s.mashed },
+    mons, gifts, clampX, landY,
   }
 }
 
@@ -74,13 +85,14 @@ export function runLevel(levelIdx, policy, o = {}) {
   G.startLevel(levelIdx)
   const frames = []
   let drops = 0, sinceDrop = tempo, steps = 0, err = null, firstDropAt = null
+  const xs = []
   while (G.s.state === 'play' && G.s.clockT < maxTime) {
     if (sinceDrop >= tempo && G.s.dropCd <= 0 && G.s.dropsLeft > 0) {
       let x
       try { x = +policy(observe(), botRng) } catch (e) { err = String(e?.message || e); break }
       if (!Number.isFinite(x)) { err = `policy returned ${x}`; break }
       if (nudge && drops === nudge.at) x += nudge.dx
-      G.setAim(x); G.drop(); drops++; sinceDrop = 0
+      G.setAim(x); G.drop(); drops++; sinceDrop = 0; xs.push(x)
       firstDropAt ??= G.s.clockT
     }
     G.update(DT); steps++; sinceDrop += DT
@@ -91,6 +103,9 @@ export function runLevel(levelIdx, policy, o = {}) {
     level: levelIdx, seed, win: s.state === 'over' && goalMet, drops, dropsLeft: s.dropsLeft, time: +s.clockT.toFixed(2),
     score: s.score, highestTier: s.highestTier, reason: err ? 'error' : s.state === 'play' ? 'timeout' : goalMet ? 'goal' : s.dropsLeft <= 0 ? 'out_of_drops' : 'overflow',
     hash: stateHash(),
+    // diagnostics the agent feeds back to the LLM: how varied the drops were, and how much of the goal was left
+    xsd: xs.length > 1 ? +Math.sqrt(xs.reduce((a, x) => a + (x - xs.reduce((p, q) => p + q, 0) / xs.length) ** 2, 0) / xs.length).toFixed(1) : 0,
+    iceLeft: [...G.mons].filter(m => m.ice).length, giftsLeft: G.gifts.size, mashed: s.mashed,
   }
   if (err) r.error = err
   if (trace) r.frames = frames

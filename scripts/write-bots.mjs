@@ -10,7 +10,7 @@ const r = await writePolicies({
     if (e.type === 'reject') console.log(`round ${e.round}: rejected (${e.why})`)
     if (e.type === 'eval') {
       if (e.errors?.length) console.log(`round ${e.round}: bots crashed: ${e.errors.join(' | ').slice(0, 300)}`)
-      else console.log(`round ${e.round}: ${e.runs} runs on ${e.backend} in ${(e.ms / 1000).toFixed(1)} s → ` + ['random', 'greedy', 'lookahead'].map(p => `${p} ${pct(e.table[p].overall)}`).join(' · ') + (e.ok ? '  MONOTONIC ✓' : '  not monotonic'))
+      else console.log(`round ${e.round}: ${e.runs} runs on ${e.backend} in ${(e.ms / 1000).toFixed(1)} s → ` + ['random', 'greedy', 'lookahead'].map(p => `${p} ${pct(e.table[p].overall)}`).join(' · ') + (e.ok ? '  SKILL RANKS CORRECTLY ✓' : e.collapses?.length ? `  broken on ${e.collapses.map(c => `L${c.level + 1} (${c.policy})`).join(', ')}` : '  wrong order'))
     }
   },
 })

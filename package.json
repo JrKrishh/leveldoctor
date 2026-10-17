@@ -13,5 +13,8 @@
   "dependencies": {
     "@nodeops-createos/sandbox": "^0.8.2",
     "esbuild": "^0.25.10"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
   }
 }

@@ -2,3 +2,10 @@ node_modules/
 build/
 .env*
 out/
+demo/work/
+demo/mon/
+demo/shots/
+demo/*.mp4
+demo/stage-data.js
+demo/traces.json
+report/dist/

@@ -1,0 +1,15 @@
+[title] This is Level Doctor. I shipped a game-jam game with twenty levels, and tuning them by hand took three rounds of guessing. Level Doctor is an agent that does it properly. It writes its own bot players, playtests the game thousands of times, finds out why players lose, and fixes the levels.
+
+[code] Step one: the agent writes code. A language model reads the game's rules and writes three bots, casual, regular and expert, as JavaScript. The agent runs them in the real game and feeds the measured pass rates back until skill ranks correctly.
+
+[run] Step two: the agent runs its code. The real, unmodified game runs headless with a virtual clock, so a whole level takes a fraction of a second, and the same seed replays byte for byte. 304 playtests, on parallel local workers, with a ninety-five percent error bar on every number.
+
+[chaos] Step three is a metric I couldn't find in any existing tool: the Chaos Ratio. This is Tight Squeeze. Same seed, same bot. The only difference: the fourth drop moved by one ten-thousandth of a unit. One run loses. The other wins.
+
+[chaosChart] Do that for every level, compare the flip rate to a coin toss, and losses split into two kinds. On Frozen Friends, losses are dice rolls. Pass rate alone can't tell these apart, and they need completely different fixes.
+
+[tempo] Step four: twist exposure. This level is called Bass Drop. A bot at typical bot speed clears it in 14 seconds, before the first bass drop at 16. It says the level is fine without ever hearing its twist. At human speed, the bass drops hit. So Level Doctor's bots play at human tempo, and every twist gets an exposure check.
+
+[fix] Finally, the fix. For each off-target level, the agent plays one batch with unlimited drops, reads the pass rate for every possible drop limit straight off the survival curve, picks the limit that hits the target, and verifies it with fresh seeds. Every level landed inside the target band.
+
+[outro] Level Doctor. Ten years of triple-A playtesting research, in five minutes, for indie web games. Built for CreateOS and Stripe Projects.

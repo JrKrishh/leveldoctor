@@ -1,0 +1,116 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Level Doctor demo</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; }
+html, body { width: 1280px; height: 720px; overflow: hidden; background: #0f0e14; color: #f0efec; font-family: Inter, sans-serif; }
+.scene { position: absolute; inset: 0; opacity: 0; transition: opacity .45s; padding: 48px 64px; }
+.scene.on { opacity: 1; }
+.kicker { color: #2fe6d2; font-weight: 600; letter-spacing: .14em; font-size: 15px; text-transform: uppercase; }
+h1 { font-size: 76px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; }
+h2 { font-size: 40px; font-weight: 800; letter-spacing: -0.02em; margin-top: 8px; }
+.sub { font-size: 22px; color: #c3c2b7; margin-top: 14px; max-width: 720px; line-height: 1.4; }
+.row { display: flex; gap: 36px; align-items: flex-start; margin-top: 22px; }
+canvas.pit { background: #1b0b3a; border-radius: 14px; }
+.cap { font-size: 18px; color: #c3c2b7; margin-top: 10px; text-align: center; }
+.stamp { font-size: 30px; font-weight: 800; text-align: center; margin-top: 6px; height: 40px; }
+.win { color: #3fb26b; } .loss { color: #e66767; }
+pre { font: 15px/1.5 'JetBrains Mono', monospace; background: #17161d; border: 1px solid #2c2a36; border-radius: 12px; padding: 18px 20px; overflow: hidden; white-space: pre-wrap; }
+img.shot { border-radius: 12px; border: 1px solid #2c2a36; max-width: 100%; }
+.big { font-size: 64px; font-weight: 800; color: #2fe6d2; font-variant-numeric: tabular-nums; }
+.badge { display: inline-block; border: 1px solid #3b3946; border-radius: 99px; padding: 6px 14px; font-size: 16px; color: #c3c2b7; margin: 14px 8px 0 0; }
+.flash { position: absolute; left: 0; right: 0; top: 40%; text-align: center; font-size: 34px; font-weight: 800; color: #ff4fb4; opacity: 0; text-shadow: 0 0 20px #ff4fb4; }
+.timer { font: 600 22px 'JetBrains Mono', monospace; text-align: center; margin-top: 8px; }
+.subtitle { position: absolute; left: 0; right: 0; bottom: 0; height: 84px; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 21px; color: #fff; background: rgba(8,7,12,.82); padding: 0 140px; line-height: 1.35; }
+</style></head>
+<body>
+<div id="scenes"></div>
+<div class="subtitle" id="subtitle"></div>
+<script src="stage-data.js"></script>
+<script>
+const D = window.STAGE, T = D.traces
+const imgs = {}
+const load = k => new Promise(r => { const im = new Image(); im.onload = () => { imgs[k] = im; r() }; im.onerror = r; im.src = `mon/${k}.webp` })
+
+function pitCanvas(h = 520) { const c = document.createElement('canvas'); c.className = 'pit'; c.width = 400; c.height = 711; c.style.height = h + 'px'; return c }
+function drawPit(c, f, opts = {}) {
+  const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, 400, 711)
+  g.fillStyle = '#1b0b3a'; g.fillRect(0, 0, 400, 711)
+  if (opts.shake) g.translate((Math.random() - .5) * 14 * opts.shake, (Math.random() - .5) * 14 * opts.shake)
+  g.fillStyle = 'rgba(22,6,52,.9)'; g.fillRect(f.l - 6, 146, f.r - f.l + 12, 536)
+  g.strokeStyle = '#2fe6d2'; g.lineWidth = 5; g.shadowColor = '#2fe6d2'; g.shadowBlur = 14
+  g.beginPath(); g.moveTo(f.l - 6, 146); g.lineTo(f.l - 6, 682); g.lineTo(f.r + 6, 682); g.lineTo(f.r + 6, 146); g.stroke(); g.shadowBlur = 0
+  g.setLineDash([10, 8]); g.strokeStyle = 'rgba(255,79,180,.6)'; g.lineWidth = 3; g.beginPath(); g.moveTo(f.l, 196); g.lineTo(f.r, 196); g.stroke(); g.setLineDash([])
+  for (const [x, y, a] of f.g) { g.save(); g.translate(x, y); g.rotate(a); g.fillStyle = '#ff4fb4'; g.fillRect(-22, -20, 44, 40); g.fillStyle = '#fff'; g.fillRect(-4, -20, 8, 40); g.fillRect(-22, -4, 44, 8); g.restore() }
+  for (const [tier, x, y, a, ice] of f.m) {
+    const t = T.tiers[tier], im = imgs[t.key]
+    g.save(); g.translate(x, y); g.rotate(a); g.beginPath(); g.arc(0, 0, t.r, 0, 7); g.clip()
+    if (im) g.drawImage(im, -t.r * 1.12, -t.r * 1.12, t.r * 2.24, t.r * 2.24); else { g.fillStyle = t.color; g.fill() }
+    if (ice) { g.fillStyle = 'rgba(170,235,255,.55)'; g.fill() }
+    g.restore()
+  }
+  g.setTransform(1, 0, 0, 1, 0, 0)
+  g.fillStyle = '#fff'; g.font = '600 26px Inter'; g.textAlign = 'left'; g.fillText(`${f.sc.toLocaleString()}`, 16, 40)
+  g.textAlign = 'right'; g.fillText(`drops left ${f.d}`, 384, 40)
+}
+const frameAt = (run, t) => run.frames[Math.min(run.frames.length - 1, Math.max(0, Math.floor(t * 10)))]
+const el = (html) => { const d = document.createElement('div'); d.className = 'scene'; d.innerHTML = html; document.getElementById('scenes').appendChild(d); return d }
+
+// ---------- scenes ----------
+const S = {}
+S.title = () => { const d = el(`<div class="row" style="margin-top:0;align-items:center;height:100%"><div style="flex:1"><div class="kicker">CreateOS × Stripe Projects hackathon</div><h1 style="margin-top:14px">🩺 Level<br>Doctor</h1><p class="sub">An agent that writes its own bot players, playtests your game thousands of times in a sandbox, finds out <b>why</b> players lose, and fixes the levels.</p></div><div id="tp"></div></div>`)
+  const c = pitCanvas(560); d.querySelector('#tp').appendChild(c); return t => drawPit(c, frameAt(T.chaos.a, t * 1.6 % T.chaos.a.time)) }
+S.code = () => { const d = el(`<div class="kicker">Step 1 · the agent writes code</div><h2>The LLM writes three bot players as code</h2><div class="row"><pre id="code" style="flex:1.4;height:440px"></pre><div style="flex:1"><div id="rounds"></div></div></div>`)
+  const pre = d.querySelector('#code'), code = D.bots
+  d.querySelector('#rounds').innerHTML = `<div class="sub" style="margin-top:0">${D.llm} writes casual, regular and expert bots. The agent plays them in the real game and feeds the pass rates back until skill ranks correctly.</div>` + D.rounds.map(r => `<div class="badge">round ${r.round}: ${r.text}</div>`).join('')
+  return (t, dur) => { const n = Math.floor(code.length * Math.min(1, t / (dur * .8))); pre.textContent = code.slice(Math.max(0, n - 1400), n) + (n < code.length ? '▍' : '') } }
+S.run = () => { const d = el(`<div class="kicker">Step 2 · run it in the sandbox</div><h2>Thousands of deterministic playtests of the real game</h2><div class="row"><div style="flex:1"><div class="big" id="cnt">0</div><div class="sub" style="margin-top:4px">playtests · ${D.backendLabel}</div><div class="badge">provisioned with Stripe Projects</div><div class="badge">real game code, headless</div><div class="badge">same seed = identical replay</div></div><pre id="log" style="flex:1.3;height:420px"></pre></div>`)
+  const cnt = d.querySelector('#cnt'), log = d.querySelector('#log'), lines = D.runLog
+  return (t, dur) => { const k = Math.min(1, t / (dur * .85)); cnt.textContent = Math.round(D.totalRuns * k).toLocaleString(); log.textContent = lines.slice(0, Math.ceil(lines.length * k)).join('\n') } }
+S.chaos = () => { const c = T.chaos, d = el(`<div class="kicker">Step 3 · a new metric: the Chaos Ratio</div><h2>${c.name}: same seed. One drop moved 0.0001 units.</h2><div class="row" style="justify-content:center;gap:60px"><div><div id="pa"></div><div class="stamp" id="sa"></div></div><div><div id="pb"></div><div class="stamp" id="sb"></div></div><div style="width:380px"><p class="sub" style="margin-top:20px">The only difference is the 4th drop, nudged by a ten-thousandth of a unit: far less than a pixel.</p><p class="sub">If outcomes flip as often as a coin toss, losses are <b>dice rolls</b> (C ≈ 1). If they never flip, they're <b>traps a designer can fix</b> (C ≈ 0).</p></div></div>`)
+  const ca = pitCanvas(410), cb = pitCanvas(410); d.querySelector('#pa').appendChild(ca); d.querySelector('#pb').appendChild(cb)
+  const sa = d.querySelector('#sa'), sb = d.querySelector('#sb'), end = Math.max(c.a.time, c.b.time)
+  const stamp = (r, el, t) => { if (t >= r.time) { el.textContent = r.win ? '✓ WIN' : '✗ LOSS'; el.className = 'stamp ' + (r.win ? 'win' : 'loss') } else { el.textContent = 'original · nudged'.split(' · ')[r === c.a ? 0 : 1]; el.className = 'stamp' } }
+  return (t, dur) => { const tt = Math.min(end, t * end / (dur * .8)); drawPit(ca, frameAt(c.a, tt)); drawPit(cb, frameAt(c.b, tt)); stamp(c.a, sa, tt); stamp(c.b, sb, tt) } }
+S.chaosChart = () => { el(`<div class="kicker">Chaos Ratio per level</div><h2>Same pass rate, completely different problem</h2><div class="row"><img class="shot" src="shots/chaos.png" style="height:460px"><div style="flex:1">${D.chaosBullets.map(b => `<p class="sub">${b}</p>`).join('')}</div></div>`); return () => {} }
+S.tempo = () => { const tp = T.tempo, d = el(`<div class="kicker">Step 4 · twist exposure</div><h2>"${tp.name}": does the bot ever hear the bass drop?</h2><div class="row" style="justify-content:center;gap:60px"><div style="position:relative"><div id="pf"></div><div class="flash" id="ff">BASS DROP!</div><div class="timer" id="tf"></div><div class="cap">bot speed: a drop every 0.53 s</div></div><div style="position:relative"><div id="ps"></div><div class="flash" id="fs">BASS DROP!</div><div class="timer" id="ts"></div><div class="cap">human speed: a drop every 1.2 s</div></div><div style="width:360px"><p class="sub" style="margin-top:30px">${D.tempoText}</p></div></div>`)
+  const cf = pitCanvas(390), cs = pitCanvas(390); d.querySelector('#pf').appendChild(cf); d.querySelector('#ps').appendChild(cs)
+  const end = tp.slow.time, beat = 60 / 118
+  const bass = (run, tt) => { if (tt > run.time) return 0; for (let b = 32; b * beat <= run.time; b += 16) { const dt = tt - b * beat; if (dt >= 0 && dt < 0.8) return 1 - dt / 0.8 } return 0 }
+  const side = (run, c, fl, tm, tt) => { const s = bass(run, tt); drawPit(c, frameAt(run, tt), { shake: s }); fl.style.opacity = s; tm.textContent = tt >= run.time ? `${run.win ? 'cleared' : 'lost'} at ${run.time.toFixed(1)} s` : `${tt.toFixed(1)} s` }
+  return (t, dur) => { const tt = Math.min(end, t * end / (dur * .85)); side(tp.fast, cf, d.querySelector('#ff'), d.querySelector('#tf'), tt); side(tp.slow, cs, d.querySelector('#fs'), d.querySelector('#ts'), tt) } }
+S.fix = () => { el(`<div class="kicker">Step 5 · fix and verify</div><h2>The agent re-tunes the levels and proves the fix</h2><div class="row"><img class="shot" src="shots/curve.png" style="max-height:440px;max-width:100%"></div><div class="row" style="margin-top:14px">${D.fixBadges.map(b => `<div class="badge" style="margin-top:0">${b}</div>`).join('')}</div>`); return () => {} }
+S.outro = () => { el(`<div style="display:flex;flex-direction:column;justify-content:center;height:100%"><div class="kicker">Level Doctor</div><h1 style="font-size:58px;margin-top:14px">Ten years of AAA playtesting research.<br>Five minutes. For indie web games.</h1><p class="sub">Bots written by an LLM · run in a CreateOS sandbox · provisioned with Stripe Projects · error bars on every number.</p><p class="sub" style="color:#2fe6d2">${D.url || ''}</p></div>`); return () => {} }
+
+// ---------- timeline ----------
+function sentenceAt(s, t) {
+  if (!s.say) return ''
+  s.parts ??= s.say.match(/[^.!?]+[.!?]+/g) || [s.say]
+  const total = s.parts.join('').length, speak = s.audio || s.dur
+  let c = 0, at = (t - (s.lead || 0.3)) / speak * total
+  for (const p of s.parts) { c += p.length; if (at < c) return p.trim() }
+  return s.parts[s.parts.length - 1].trim()
+}
+const plan = D.timeline.map(s => ({ ...s, tick: S[s.scene]() }))
+const scenes = [...document.querySelectorAll('.scene')]
+Promise.all(T.tiers.map(t => load(t.key))).then(() => {
+  window.READY = true
+  const start = () => {
+    const t0 = performance.now()
+    const loop = () => {
+      const t = (performance.now() - t0) / 1000
+      let acc = 0, k = plan.length - 1
+      for (let i = 0; i < plan.length; i++) { if (t < acc + plan[i].dur) { k = i; break } acc += plan[i].dur }
+      if (k === plan.length - 1 && t >= acc + plan[k].dur) acc = plan.slice(0, k).reduce((a, s) => a + s.dur, 0)
+      scenes.forEach((s, i) => s.classList.toggle('on', i === k))
+      document.getElementById('subtitle').textContent = sentenceAt(plan[k], t - acc)
+      plan[k].tick(t - acc, plan[k].dur)
+      if (t < D.total + 1) requestAnimationFrame(loop); else window.DONE = true
+    }
+    loop()
+  }
+  window.START = start
+  if (location.hash === '#auto') start()
+})
+</script>
+</body></html>

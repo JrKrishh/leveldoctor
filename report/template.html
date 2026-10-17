@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Level Doctor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #121211; --surface-1: #1a1a19; --surface-2: #232321; --line: #34332f;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8d8c84;
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
+  --band: rgba(240,239,236,0.07); --band-edge: rgba(240,239,236,0.22);
+  --good: #3fb26b; --warn: #e0a42a; --bad: #e66767;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #f4f3f0; --surface-1: #fcfcfb; --surface-2: #f0efeb; --line: #dddcd6;
+    --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #7a7973;
+    --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a;
+    --band: rgba(11,11,11,0.06); --band-edge: rgba(11,11,11,0.2);
+    --good: #1f8a4c; --warn: #a86b00; --bad: #c43a3a;
+  }
+}
+:root[data-theme="dark"] { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text-primary); font: 15px/1.55 Inter, system-ui, sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 32px 16px 80px; }
+h1 { font-size: 34px; letter-spacing: -0.02em; margin: 0; }
+h2 { font-size: 20px; margin: 0 0 4px; }
+.sub { color: var(--text-secondary); margin: 6px 0 0; max-width: 760px; }
+.meta { color: var(--text-muted); font-size: 13px; margin-top: 10px; }
+.card { background: var(--surface-1); border: 1px solid var(--line); border-radius: 14px; padding: 20px; margin-top: 18px; }
+.card > p.lede { color: var(--text-secondary); margin: 0 0 14px; max-width: 800px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-top: 22px; }
+.tile { background: var(--surface-1); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+.tile b { display: block; font-size: 30px; letter-spacing: -0.02em; }
+.tile span { color: var(--text-secondary); font-size: 13px; }
+svg text { fill: var(--text-secondary); font: 12px Inter, sans-serif; }
+svg .axis { stroke: var(--line); }
+svg .grid { stroke: var(--line); stroke-dasharray: 2 4; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); margin: 4px 0 8px; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th { text-align: left; color: var(--text-muted); font-weight: 500; border-bottom: 1px solid var(--line); padding: 8px 6px; }
+td { border-bottom: 1px solid var(--line); padding: 8px 6px; vertical-align: top; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; font-weight: 600; border: 1px solid currentColor; white-space: nowrap; }
+.ok { color: var(--good); } .hard { color: var(--bad); } .easy { color: var(--warn); }
+.flag { color: var(--text-secondary); font-size: 12.5px; }
+.scroll { overflow-x: auto; }
+pre { background: var(--surface-2); border-radius: 10px; padding: 14px; overflow: auto; font: 12.5px/1.5 'JetBrains Mono', monospace; max-height: 420px; }
+details summary { cursor: pointer; color: var(--text-secondary); }
+#tip { position: fixed; pointer-events: none; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; opacity: 0; transition: opacity .1s; max-width: 280px; z-index: 9; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 800px) { .two { grid-template-columns: 1fr; } h1 { font-size: 26px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>🩺 Level Doctor · Mash Pit</h1>
+  <p class="sub">An agent wrote its own bot players, ran thousands of deterministic playtests of the real game code, measured every level with error bars, diagnosed <em>why</em> players lose, re-tuned the levels to a target curve and verified the fix.</p>
+  <div class="meta" id="meta"></div>
+  <div class="tiles" id="tiles"></div>
+
+  <section class="card">
+    <h2>Difficulty curve</h2>
+    <p class="lede">Pass rate per level for three bot players the agent wrote (casual random → regular greedy → expert lookahead), at a human tempo of one drop per <span id="tempo"></span> s. The shaded band is the target for a regular player; whiskers are 95% intervals. Hollow rings show the regular player after the patch.</p>
+    <div class="legend"><span><i style="background:var(--series-1)"></i>Casual (random)</span><span><i style="background:var(--series-2)"></i>Regular (greedy)</span><span><i style="background:var(--series-3)"></i>Expert (lookahead)</span><span><i style="background:var(--band);border:1px solid var(--band-edge)"></i>Target band</span><span>◯ after patch</span></div>
+    <div id="curve"></div>
+  </section>
+
+  <div class="two">
+    <section class="card">
+      <h2>Chaos Ratio: luck or a fixable trap?</h2>
+      <p class="lede">Each run is replayed with one drop nudged by 0.0001 units, far below a pixel. If the outcome flips as often as a fresh coin toss would, losses are dice rolls (C ≈ 1). If it never flips, losses are reproducible traps a designer can fix (C ≈ 0). Pass rate alone can't tell these apart.</p>
+      <div id="chaos"></div>
+    </section>
+    <section class="card">
+      <h2>Churn funnel</h2>
+      <p class="lede">Share of a mixed player population (40% casual with 3 tries, 40% regular with 5, 20% expert with 8) still playing when they reach each level, before and after the patch.</p>
+      <div class="legend"><span><i style="background:var(--text-muted)"></i>Before</span><span><i style="background:var(--series-3)"></i>After patch</span></div>
+      <div id="funnel"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Twist exposure: do the bots even experience the level's twist?</h2>
+    <p class="lede">Each run is paired with a copy where one twist is switched off (same seeds). Identical pairs mean the twist never touched that run. Fast bots finish time-based levels before the twist arrives, so they report a level is fine without ever seeing its point.</p>
+    <div class="scroll" id="exposure"></div>
+  </section>
+
+  <section class="card">
+    <h2>The patch</h2>
+    <p class="lede">For every off-target level the agent played one batch with <em>unlimited</em> drops and read the pass rate for every possible drop limit off the survival curve, picked the limit that hits the target, then verified it with fresh seeds.</p>
+    <div class="scroll" id="patch"></div>
+  </section>
+
+  <section class="card">
+    <h2>Every level</h2>
+    <div class="scroll" id="levels"></div>
+  </section>
+
+  <section class="card">
+    <h2>The bots the agent wrote</h2>
+    <p class="lede" id="botsLede"></p>
+    <div class="scroll" id="rounds"></div>
+    <details><summary>Show the bot code</summary><pre id="code"></pre></details>
+  </section>
+
+  <section class="card">
+    <h2>Method</h2>
+    <p class="lede">The real game code (unmodified) is bundled and run headless with a virtual clock: no rendering, a seeded random stream per run, and leaked state reset between runs, so the same seed replays byte for byte. Bots act every <span class="tempo2"></span> s, the speed of a human player. Pass rates carry Wilson 95% intervals. The Chaos Ratio is flip rate ÷ 2p(1−p) over paired replays. Targets: a regular player passes 95% of level 1 falling linearly to 60% on level 20, ±10 points.</p>
+  </section>
+</main>
+<div id="tip"></div>
+<script>
+const DATA = /*__DATA__*/null
+const { res, bots, agent } = DATA
+const L = res.levels, n = L.length
+const $ = id => document.getElementById(id)
+const pct = (p, d = 0) => (p * 100).toFixed(d) + '%'
+const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
+const tip = $('tip')
+function bindTip(el, html) {
+  el.addEventListener('mousemove', e => { tip.innerHTML = html; tip.style.opacity = 1; tip.style.left = Math.min(innerWidth - 290, e.clientX + 14) + 'px'; tip.style.top = (e.clientY + 14) + 'px' })
+  el.addEventListener('mouseleave', () => tip.style.opacity = 0)
+}
+const NS = 'http://www.w3.org/2000/svg'
+const S = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent && parent.appendChild(e); return e }
+
+// ---------- header ----------
+const patched = L.filter(l => l.patch), offBefore = L.filter(l => l.status !== 'ok').length
+const offAfter = L.filter(l => l.status !== 'ok' && !(l.verify && l.verify.inBand)).length
+const chaotic = L.filter(l => l.chaos && l.chaos.C != null && l.chaos.C >= 0.6).length
+const traps = L.filter(l => l.chaos && l.chaos.C != null && l.chaos.C <= 0.2 && l.personas[res.player].p < 0.98).length
+const blind = L.filter(l => l.flags.some(f => f.startsWith('TEMPO'))).length
+$('meta').textContent = `${res.runs.total.toLocaleString()} playtests · ran on ${res.runs.backend === 'createos' ? 'a CreateOS sandbox' : 'the local runner'} · bots written by ${res.llm} · ${new Date(res.generatedAt).toLocaleString()}`
+$('tempo').textContent = res.tempo; document.querySelectorAll('.tempo2').forEach(e => e.textContent = res.tempo)
+const tiles = [[res.runs.total.toLocaleString(), 'deterministic playtests of the real game'], [`${offBefore} → ${offAfter}`, 'levels off the target curve, before → after'], [chaotic, 'levels where losses are dice rolls (C ≥ 0.6)'], [traps, 'levels with reproducible, fixable traps'], [blind, 'levels whose twist fast bots never see']]
+$('tiles').innerHTML = tiles.map(([b, s]) => `<div class="tile"><b>${b}</b><span>${s}</span></div>`).join('')
+
+// ---------- difficulty curve ----------
+;(function () {
+  const W = 1040, H = 360, m = { l: 44, r: 12, t: 12, b: 34 }, iw = W - m.l - m.r, ih = H - m.t - m.b
+  const x = i => m.l + (n === 1 ? iw / 2 : i * iw / (n - 1)), y = p => m.t + (1 - p) * ih
+  const svg = S('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%', role: 'img', 'aria-label': 'Pass rate per level for three bot players with the target band' }, $('curve'))
+  for (const g of [0, .25, .5, .75, 1]) { S('line', { x1: m.l, x2: W - m.r, y1: y(g), y2: y(g), class: 'grid' }, svg); S('text', { x: m.l - 8, y: y(g) + 4, 'text-anchor': 'end' }, svg).textContent = pct(g) }
+  const band = L.map((l, k) => [x(k), y(Math.min(1, l.target + res.band))]).concat(L.map((l, k) => [x(k), y(Math.max(0, l.target - res.band))]).reverse())
+  S('path', { d: 'M' + band.map(p => p.join(',')).join('L') + 'Z', fill: 'var(--band)', stroke: 'var(--band-edge)', 'stroke-dasharray': '3 3' }, svg)
+  L.forEach((l, k) => { if (k % (n > 12 ? 1 : 1) === 0) S('text', { x: x(k), y: H - 12, 'text-anchor': 'middle' }, svg).textContent = l.i + 1 })
+  const cols = { random: 'var(--series-1)', greedy: 'var(--series-2)', lookahead: 'var(--series-3)' }
+  for (const p of res.personas) {
+    S('path', { d: 'M' + L.map((l, k) => `${x(k)},${y(l.personas[p].p)}`).join('L'), fill: 'none', stroke: cols[p], 'stroke-width': 2, 'stroke-linejoin': 'round' }, svg)
+    if (p === res.player) L.forEach((l, k) => S('line', { x1: x(k), x2: x(k), y1: y(l.personas[p].lo), y2: y(l.personas[p].hi), stroke: cols[p], 'stroke-width': 1.5, opacity: .7 }, svg))
+    L.forEach((l, k) => S('circle', { cx: x(k), cy: y(l.personas[p].p), r: 4, fill: cols[p], stroke: 'var(--surface-1)', 'stroke-width': 2 }, svg))
+  }
+  L.forEach((l, k) => { if (l.verify) S('circle', { cx: x(k), cy: y(l.verify.p), r: 7, fill: 'none', stroke: 'var(--text-primary)', 'stroke-width': 2 }, svg) })
+  L.forEach((l, k) => {   // hover column per level
+    const hit = S('rect', { x: x(k) - iw / (2 * Math.max(1, n - 1)), y: m.t, width: iw / Math.max(1, n - 1), height: ih, fill: 'transparent' }, svg)
+    const P = l.personas
+    bindTip(hit, `<b>L${l.i + 1} ${esc(l.name)}</b><br>Casual ${pct(P.random.p)} · Regular ${pct(P.greedy.p)} [${pct(P.greedy.lo)}–${pct(P.greedy.hi)}] · Expert ${pct(P.lookahead.p)}<br>Target ${pct(l.target)} ± ${pct(res.band)}${l.verify ? `<br>After patch: ${pct(l.verify.p)} [${pct(l.verify.lo)}–${pct(l.verify.hi)}]` : ''}`)
+  })
+})()
+
+// ---------- chaos bars ----------
+;(function () {
+  const rows = L.filter(l => l.chaos), W = 500, rh = 22, H = rows.length * rh + 30, m = { l: 130, r: 46 }
+  const svg = S('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%', role: 'img', 'aria-label': 'Chaos ratio per level' }, $('chaos'))
+  const x = c => m.l + Math.min(1.3, c) / 1.3 * (W - m.l - m.r)
+  for (const g of [0, .2, .6, 1]) { S('line', { x1: x(g), x2: x(g), y1: 0, y2: H - 22, class: 'grid' }, svg); S('text', { x: x(g), y: H - 6, 'text-anchor': 'middle' }, svg).textContent = g }
+  rows.forEach((l, k) => {
+    const yy = k * rh + 4, c = l.chaos.C
+    S('text', { x: m.l - 8, y: yy + 13, 'text-anchor': 'end' }, svg).textContent = `L${l.i + 1} ${l.name}`
+    if (c == null) { S('text', { x: m.l + 4, y: yy + 13, fill: 'var(--text-muted)' }, svg).textContent = 'no losses to explain'; return }
+    const bar = S('rect', { x: m.l, y: yy + 3, width: Math.max(2, x(c) - m.l), height: rh - 8, rx: 4, fill: 'var(--series-2)' }, svg)
+    S('text', { x: x(c) + 6, y: yy + 13 }, svg).textContent = c.toFixed(2)
+    bindTip(bar, `<b>L${l.i + 1} ${esc(l.name)}</b><br>pass ${pct(l.chaos.p)} · flip rate ${pct(l.chaos.flip)} vs ${pct(l.chaos.expect)} for a fresh coin toss<br>${c >= .6 ? 'Losses are dice rolls: soften the chaos, not the limit.' : c <= .2 ? 'Losses are reproducible traps: find and fix them.' : 'Mixed: part luck, part skill.'}<br>n = ${l.chaos.n} pairs`)
+  })
+})()
+
+// ---------- funnel ----------
+;(function () {
+  const W = 500, H = 260, m = { l: 40, r: 10, t: 10, b: 30 }, f = res.funnel, k = f.before.length
+  const x = i => m.l + i * (W - m.l - m.r) / (k - 1), y = p => m.t + (1 - p) * (H - m.t - m.b)
+  const svg = S('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%', role: 'img', 'aria-label': 'Share of players reaching each level, before and after the patch' }, $('funnel'))
+  for (const g of [0, .5, 1]) { S('line', { x1: m.l, x2: W - m.r, y1: y(g), y2: y(g), class: 'grid' }, svg); S('text', { x: m.l - 6, y: y(g) + 4, 'text-anchor': 'end' }, svg).textContent = pct(g) }
+  for (const [key, col] of [['before', 'var(--text-muted)'], ['after', 'var(--series-3)']]) S('path', { d: 'M' + f[key].map((p, i) => `${x(i)},${y(p)}`).join('L'), fill: 'none', stroke: col, 'stroke-width': 2 }, svg)
+  for (const i of [0, Math.floor((k - 1) / 2), k - 1]) S('text', { x: x(i), y: H - 10, 'text-anchor': 'middle' }, svg).textContent = i === k - 1 ? 'finished' : 'L' + (i + 1)
+  f.before.forEach((p, i) => { const hit = S('rect', { x: x(i) - 8, y: m.t, width: 16, height: H - m.t - m.b, fill: 'transparent' }, svg); bindTip(hit, `<b>${i === k - 1 ? 'Finished the game' : 'Reached L' + (i + 1)}</b><br>before ${pct(p, 1)} · after ${pct(f.after[i], 1)}`) })
+  S('text', { x: W - m.r, y: y(f.after[k - 1]) + (f.after[k - 1] > 0.85 ? 18 : -8), 'text-anchor': 'end' }, svg).textContent = `${pct(f.before[k - 1])} → ${pct(f.after[k - 1])} finish`
+})()
+
+// ---------- exposure table ----------
+;(function () {
+  const rows = []
+  for (const l of L) for (const [tw, e] of Object.entries(l.exposure || {})) {
+    const fast = e['0.53'], hum = e[String(res.tempo)]
+    if (!hum) continue
+    rows.push(`<tr><td>L${l.i + 1} ${esc(l.name)}</td><td>${tw === 'dj' ? '🔊 DJ bass drops' : tw}</td><td class="num">${fast ? pct(fast.rate) : '–'}</td><td class="num">${pct(hum.rate)}</td><td class="num">${pct(hum.passOn)} → ${pct(hum.passOff)}</td><td class="flag">${fast && hum.rate - fast.rate >= .4 ? '⚑ fast bots miss this twist' : hum.rate < .3 ? '⚑ rarely matters: decoration?' : ''}</td></tr>`)
+  }
+  $('exposure').innerHTML = `<table><tr><th>Level</th><th>Twist</th><th>Exposed at bot speed (0.53 s)</th><th>Exposed at human speed (${res.tempo} s)</th><th>Pass with → without twist</th><th></th></tr>${rows.join('')}</table>`
+})()
+
+// ---------- patch table ----------
+;(function () {
+  const rows = L.filter(l => l.status !== 'ok').map(l => {
+    const P = l.personas[res.player]
+    const after = l.verify ? `${pct(l.verify.p)} [${pct(l.verify.lo)}–${pct(l.verify.hi)}] ${l.verify.inBand ? '<span class="pill ok">✓ in band</span>' : '<span class="pill hard">✗ off</span>'}` : '–'
+    return `<tr><td>L${l.i + 1} ${esc(l.name)}</td><td class="num">${pct(P.p)} [${pct(P.lo)}–${pct(P.hi)}]</td><td class="num">${pct(l.target)}</td><td class="num">${l.patch ? `drops ${l.drops} → <b>${l.patch.drops}</b>` : '<span class="flag">no drop-limit fix</span>'}</td><td class="num">${l.tune ? pct(l.tune.predicted) : '–'}</td><td class="num">${after}</td><td class="flag">${esc(l.tune?.note || '')}</td></tr>`
+  })
+  $('patch').innerHTML = rows.length ? `<table><tr><th>Level</th><th>Regular player before</th><th>Target</th><th>Change</th><th>Predicted</th><th>Verified (fresh seeds)</th><th></th></tr>${rows.join('')}</table>` : '<p class="flag">Every level is already inside the target band.</p>'
+})()
+
+// ---------- level table ----------
+;(function () {
+  const st = s => s === 'ok' ? '<span class="pill ok">✓ on target</span>' : s === 'too_hard' ? '<span class="pill hard">▲ too hard</span>' : '<span class="pill easy">▼ too easy</span>'
+  $('levels').innerHTML = `<table><tr><th>Level</th><th>Casual</th><th>Regular</th><th>Expert</th><th>Target</th><th>Status</th><th>Chaos C</th><th>Findings</th></tr>${L.map(l => `<tr><td>L${l.i + 1} ${esc(l.name)}</td><td class="num">${pct(l.personas.random.p)}</td><td class="num">${pct(l.personas.greedy.p)} <span class="flag">[${pct(l.personas.greedy.lo)}–${pct(l.personas.greedy.hi)}]</span></td><td class="num">${pct(l.personas.lookahead.p)}</td><td class="num">${pct(l.target)}</td><td>${st(l.status)}</td><td class="num">${l.chaos?.C != null ? l.chaos.C.toFixed(2) : '–'}</td><td class="flag">${l.flags.map(esc).join('<br>')}</td></tr>`).join('')}</table>`
+})()
+
+// ---------- bots ----------
+$('code').textContent = bots
+$('botsLede').textContent = `${res.llm} wrote three bots as code, then the agent ran them in the real game and fed the measured pass rates back until skill ranked correctly (casual < regular < expert). ${agent.length} round${agent.length === 1 ? '' : 's'}:`
+$('rounds').innerHTML = agent.length ? `<table><tr><th>Round</th><th>Casual</th><th>Regular</th><th>Expert</th><th>Result</th></tr>${agent.map(a => `<tr><td>${a.round}</td>${a.table ? ['random', 'greedy', 'lookahead'].map(p => `<td class="num">${pct(a.table[p].p)}</td>`).join('') : '<td colspan="3" class="flag">' + esc((a.errors || []).join(' | ').slice(0, 160)) + '</td>'}<td>${a.ok ? '<span class="pill ok">✓ monotonic</span>' : a.errors?.length ? '<span class="pill hard">crashed</span>' : '<span class="pill easy">rewrite</span>'}</td></tr>`).join('')}</table>` : ''
+</script>
+</body>
+</html>

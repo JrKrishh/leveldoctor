@@ -1,0 +1,69 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Level Doctor take</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; }
+body { background: #0f0e14; color: #f0efec; font-family: Inter, sans-serif; height: 100vh; display: grid; grid-template-rows: auto 1fr auto; }
+header { padding: 14px 20px; display: flex; gap: 12px; align-items: center; border-bottom: 1px solid #2c2a36; }
+header b { font-size: 18px; margin-right: auto; }
+button { font: 600 16px Inter; padding: 10px 18px; border-radius: 10px; border: 0; cursor: pointer; background: #2fe6d2; color: #0f0e14; }
+button.ghost { background: #2c2a36; color: #f0efec; }
+button:disabled { opacity: .4; cursor: default; }
+main { display: grid; grid-template-columns: 1.3fr 1fr; gap: 18px; padding: 18px 20px; min-height: 0; }
+video#stage { width: 100%; border-radius: 12px; background: #000; }
+#cam { width: 100%; border-radius: 12px; transform: scaleX(-1); background: #000; max-height: 46vh; object-fit: cover; }
+#prompt { font-size: 34px; line-height: 1.35; font-weight: 600; min-height: 140px; }
+#nextLine { font-size: 20px; color: #8d8c84; margin-top: 14px; }
+#status { color: #c3c2b7; font-size: 15px; }
+#count { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; font-size: 160px; font-weight: 800; background: rgba(0,0,0,.7); }
+footer { padding: 10px 20px; color: #8d8c84; font-size: 14px; border-top: 1px solid #2c2a36; }
+.rec { color: #e66767; font-weight: 700; }
+</style></head>
+<body>
+<header><b>🩺 Level Doctor · on-camera take</b><span id="status">Loading…</span>
+  <button id="go" disabled>● Start take</button><button id="stop" class="ghost" disabled>■ Stop</button><button id="save" class="ghost" disabled>Save take</button></header>
+<main>
+  <div><video id="stage" src="leveldoctor-demo.mp4" muted playsinline></video>
+    <div style="margin-top:16px"><div id="prompt">Press <b>Start take</b>. Read each line as it appears; the video shows what viewers will see.</div><div id="nextLine"></div></div></div>
+  <div><video id="cam" autoplay muted playsinline></video>
+    <p id="tips" style="margin-top:14px;color:#c3c2b7;line-height:1.5">Look at the camera between lines. Speak at a normal pace; the lines follow the video, so if you fall behind, skip ahead. You can do as many takes as you like: each one is saved separately.</p></div>
+</main>
+<footer>The take records your camera and microphone only. Saved files go to <code>demo/work/</code> on this computer.</footer>
+<div id="count"></div>
+<script src="stage-data.js"></script>
+<script>
+const $ = id => document.getElementById(id)
+const plan = (window.STAGE?.timeline || []).map(s => ({ ...s, parts: s.say.match(/[^.!?]+[.!?]+/g) || [s.say] }))
+const lines = []   // [startTime, text]
+{ let at = 0; for (const s of plan) { const total = s.parts.join('').length; let c = 0; for (const p of s.parts) { lines.push([at + (s.lead || 0.3) + c / total * (s.audio || s.dur), p.trim()]); c += p.length } at += s.dur } }
+let stream, rec, chunks = [], blob = null, t0 = 0, raf = 0
+navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: { echoCancellation: true, noiseSuppression: true } }).then(s => {
+  stream = s; $('cam').srcObject = s; $('go').disabled = false; $('status').textContent = `Camera ready · ${lines.length} lines · ${Math.round(window.STAGE?.total || 0)} s`
+}).catch(e => $('status').textContent = 'Camera/mic blocked: ' + e.message)
+function tick() {
+  const t = (performance.now() - t0) / 1000
+  let k = 0; while (k + 1 < lines.length && lines[k + 1][0] <= t) k++
+  $('prompt').textContent = t < lines[0][0] ? 'Get ready…' : lines[k][1]
+  $('nextLine').textContent = lines[k + 1] ? 'next: ' + lines[k + 1][1] : ''
+  if (rec?.state === 'recording') { $('status').innerHTML = `<span class="rec">● REC</span> ${t.toFixed(0)} s / ${Math.round(window.STAGE.total)} s`; raf = requestAnimationFrame(tick) }
+}
+$('go').onclick = async () => {
+  $('go').disabled = true; blob = null
+  for (const n of [3, 2, 1]) { $('count').style.display = 'flex'; $('count').textContent = n; await new Promise(r => setTimeout(r, 800)) }
+  $('count').style.display = 'none'
+  chunks = []; rec = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8,opus' })
+  rec.ondataavailable = e => e.data.size && chunks.push(e.data)
+  rec.onstop = () => { blob = new Blob(chunks, { type: 'video/webm' }); $('save').disabled = false; $('go').disabled = false; $('status').textContent = `Take ready (${(blob.size / 1e6).toFixed(1)} MB). Save it, or start another.` }
+  const v = $('stage'); v.currentTime = 0
+  rec.start(1000); await v.play(); t0 = performance.now()
+  $('stop').disabled = false; tick()
+  v.onended = () => rec.state === 'recording' && $('stop').click()
+}
+$('stop').onclick = () => { $('stop').disabled = true; cancelAnimationFrame(raf); $('stage').pause(); rec?.state === 'recording' && rec.stop() }
+$('save').onclick = async () => {
+  $('save').disabled = true; $('status').textContent = 'Saving…'
+  const r = await fetch('/upload', { method: 'POST', body: blob }).then(r => r.json()).catch(e => ({ error: e.message }))
+  $('status').textContent = r.saved ? `Saved ${r.saved}. Tell Claude "take saved".` : 'Save failed: ' + r.error
+}
+</script>
+</body></html>

@@ -111,6 +111,12 @@ details summary { cursor: pointer; color: var(--text-secondary); }
     <details><summary>Show the bot code</summary><pre id="code"></pre></details>
   </section>
 
+  <section class="card" id="sbcard" style="display:none">
+    <h2>Where the code ran</h2>
+    <p class="lede">The bots are code an LLM wrote, so every batch runs in a CreateOS sandbox with its network locked down.</p>
+    <pre id="sbproof"></pre>
+  </section>
+
   <section class="card">
     <h2>Method</h2>
     <p class="lede">The real game code (unmodified) is bundled and run headless with a virtual clock: no rendering, a seeded random stream per run, and leaked state reset between runs, so the same seed replays byte for byte. Bots act every <span class="tempo2"></span> s, the speed of a human player. Pass rates carry Wilson 95% intervals. The Chaos Ratio is flip rate ÷ 2p(1−p) over paired replays. Targets: a regular player passes 95% of level 1 falling linearly to 60% on level 20, ±10 points.</p>
@@ -119,7 +125,7 @@ details summary { cursor: pointer; color: var(--text-secondary); }
 <div id="tip"></div>
 <script>
 const DATA = /*__DATA__*/null
-const { res, bots, agent } = DATA
+const { res, bots, agent, sandbox } = DATA
 const L = res.levels, n = L.length
 const $ = id => document.getElementById(id)
 const pct = (p, d = 0) => (p * 100).toFixed(d) + '%'
@@ -220,6 +226,14 @@ $('tiles').innerHTML = tiles.map(([b, s]) => `<div class="tile"><b>${b}</b><span
   const st = s => s === 'ok' ? '<span class="pill ok">✓ on target</span>' : s === 'too_hard' ? '<span class="pill hard">▲ too hard</span>' : '<span class="pill easy">▼ too easy</span>'
   $('levels').innerHTML = `<table><tr><th>Level</th><th>Casual</th><th>Regular</th><th>Expert</th><th>Target</th><th>Status</th><th>Chaos C</th><th>Findings</th></tr>${L.map(l => `<tr><td>L${l.i + 1} ${esc(l.name)}</td><td class="num">${pct(l.personas.random.p)}</td><td class="num">${pct(l.personas.greedy.p)} <span class="flag">[${pct(l.personas.greedy.lo)}–${pct(l.personas.greedy.hi)}]</span></td><td class="num">${pct(l.personas.lookahead.p)}</td><td class="num">${pct(l.target)}</td><td>${st(l.status)}</td><td class="num">${l.chaos?.C != null ? l.chaos.C.toFixed(2) : '–'}</td><td class="flag">${l.flags.map(esc).join('<br>')}</td></tr>`).join('')}</table>`
 })()
+
+// ---------- sandbox proof ----------
+if (sandbox) {
+  $('sbcard').style.display = ''
+  $('sbproof').textContent = [`CreateOS sandbox ${sandbox.sandbox} · devbox:1 · node ${sandbox.node}`, `egress allowlist: ${JSON.stringify(sandbox.isolation.egress)}`,
+    `curl https://example.com from inside → ${sandbox.isolation.blocked ? 'BLOCKED' : 'OPEN'} (${sandbox.isolation.detail})`,
+    `same seeds in the sandbox and on a laptop → ${sandbox.identical}/${sandbox.runs} byte-identical runs`, `checked ${new Date(sandbox.at).toLocaleString()}`].join('\n')
+}
 
 // ---------- bots ----------
 $('code').textContent = bots

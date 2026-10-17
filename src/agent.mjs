@@ -37,7 +37,7 @@ const TASK = `Write THREE bot players of increasing skill as ONE JavaScript ES m
 
 export default {
   random: (o, rng) => ...,     // casual player: drops at a uniformly random x inside the walls
-  greedy: (o, rng) => ...,     // regular player: drops onto the monster of the same tier as o.cur that is highest in the pile (smallest y) and not frozen; otherwise somewhere sensible
+  greedy: (o, rng) => ...,     // regular player, one simple rule at a time: merge when it can (onto the reachable same-tier, unfrozen monster highest in the pile); otherwise go for the level's goal objects (drop next to a gift or a frozen monster); otherwise keep the pile flat
   lookahead: (o, rng) => ...,  // expert: tries ~20 candidate x positions, scores each (merge chances with same-tier neighbours near where the monster would land, keeping the pile low, avoiding the walls of big monsters, using o.next and the goal: gifts, ice), returns the best
 }
 
@@ -77,7 +77,7 @@ export async function evaluate(file, { levels = TEST_LEVELS, n = 16, tempo = 1.2
 
 const fmt = t => PERSONAS.map(p => `${p}: overall ${(t[p].overall.p * 100).toFixed(0)}% [${Object.entries(t[p]).filter(([k]) => k !== 'overall').map(([k, v]) => `L${+k + 1} ${(v.p * 100).toFixed(0)}%`).join(', ')}]`).join('\n')
 
-export async function writePolicies({ levels, tiers, rounds = 6, onEvent = () => {} }) {
+export async function writePolicies({ levels, tiers, rounds = 8, onEvent = () => {} }) {
   const file = path.join(OUT, 'policies.mjs')
   const messages = [
     { role: 'system', content: 'You are a senior game AI programmer. You write small, correct, dependency-free JavaScript.' },
@@ -86,7 +86,9 @@ export async function writePolicies({ levels, tiers, rounds = 6, onEvent = () =>
   let best = null, prevCode = null
   for (let round = 1; round <= rounds; round++) {
     onEvent({ type: 'llm', round, model: llmName() })
-    const { text, ms, model } = await chat(messages)
+    const streamLog = []   // the model's real output with timings, replayed in the demo video
+    const { text, ms, model } = await chat(messages, { stream: c => streamLog.push(c) })
+    await writeFile(path.join(OUT, `llm-stream-round${round}.json`), JSON.stringify({ model, round, chunks: streamLog }))
     const code = codeBlock(text)
     await log({ round, model, ms, reply: text.slice(-6000) })
     if (!code || !/export\s+default/.test(code)) {
@@ -101,7 +103,8 @@ export async function writePolicies({ levels, tiers, rounds = 6, onEvent = () =>
     await log({ round, eval: ev })
     onEvent({ type: 'eval', round, ...ev })
     if (!ev.errors.length && ev.table) {
-      const score = ev.table.lookahead.overall.p - ev.table.random.overall.p
+      const [pa, pb, pc] = PERSONAS.map(p => ev.table[p].overall.p)
+      const score = Math.min(pb - pa, pc - pb) - 0.5 * ev.collapses.length   // both skill gaps, broken levels cost a lot
       if (!best || ev.ok > best.ev.ok || (ev.ok === best.ev.ok && score > best.score)) best = { round, code, ev, score, model }
     }
     if (ev.ok) break
@@ -112,7 +115,11 @@ export async function writePolicies({ levels, tiers, rounds = 6, onEvent = () =>
     const extra = (weakest && !ev.errors.length ? '\nWhere the expert is weakest:\n' + weakest.map(({ l }) => `  L${l + 1} ${levels[l].name}: lookahead ${ev.diag[`lookahead|${l}`]}`).join('\n') : '') +
       (prevCode === code ? '\nNOTE: your module is identical to the previous one. Change the logic, not just the comments.' : '')
     prevCode = code
-    messages.push({ role: 'assistant', content: '```js\n' + code + '\n```' }, { role: 'user', content: feedback + extra })
+    const FENCE = '`'.repeat(3)
+    const regress = best && best.round !== round
+      ? `\nThat version scored worse than your best so far (round ${best.round}: ${PERSONAS.map(p => `${p} ${(best.ev.table[p].overall.p * 100).toFixed(0)}%`).join(', ')}). Start again from that best version:\n${FENCE}js\n${best.code}\n${FENCE}`
+      : ''
+    messages.push({ role: 'assistant', content: '```js\n' + code + '\n```' }, { role: 'user', content: feedback + extra + regress })
   }
   if (!best) throw new Error('the LLM never produced runnable bots')
   await writeFile(file, `// Written by ${best.model}, round ${best.round} (monotonic: ${best.ev.ok})\n${best.code}`)

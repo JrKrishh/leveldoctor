@@ -18,6 +18,13 @@ const bots = await readFile(path.join(ROOT, res.policiesFile || 'out/policies.mj
 const runLog = existsSync(path.join(ROOT, 'out', 'doctor.log')) ? (await readFile(path.join(ROOT, 'out', 'doctor.log'), 'utf8')).split('\n').filter(l => l.trim()).slice(0, 34) : []
 let rounds = []
 try { rounds = (await readFile(path.join(ROOT, 'out', 'agent-log.jsonl'), 'utf8')).split('\n').filter(Boolean).map(l => JSON.parse(l)).filter(e => e.eval) } catch { }
+const readJson = async (f, d = null) => { try { return JSON.parse(await readFile(path.join(ROOT, f), 'utf8')) } catch { return d } }
+const terminal = await readJson('out/doctor-terminal.json', [])            // the real run, line by line with timings
+const bestRound = +(bots.match(/round (\d+)/)?.[1] || 0)
+const stream = await readJson(`out/llm-stream-round${bestRound}.json`)       // the model's real output with timings
+const sbCheck = await readJson('out/sandbox-check.json')
+let stripeOk = false
+try { stripeOk = !/Welcome to Stripe Projects/.test(execFileSync('stripe', ['projects', 'status'], { cwd: ROOT, stdio: 'pipe', timeout: 30000 }).toString()) } catch { }
 await rm(WORK, { recursive: true, force: true }); await mkdir(path.join(WORK, 'audio'), { recursive: true })
 
 // ---------- facts for the script (all from the results) ----------
@@ -27,7 +34,8 @@ const byC = L.filter(l => l.chaos?.C != null)
 const dice = byC.filter(l => l.chaos.C >= 0.6).sort((a, b) => b.chaos.C - a.chaos.C), traps = byC.filter(l => l.chaos.C <= 0.2 && l.personas[res.player].p < 0.98)
 const patched = L.filter(l => l.patch), verified = patched.filter(l => l.verify?.inBand)
 const ch = traces.chaos, tp = traces.tempo
-const roundsText = rounds.map(r => ({ round: r.round, text: r.eval.ok ? 'skill ranks correctly ✓' : r.eval.errors?.length ? 'bots crashed → fix' : 'wrong ranking → rewrite' }))
+const pc0 = p => `${Math.round(p * 100)}%`
+const roundsText = rounds.map(r => ({ round: r.round, text: r.eval.errors?.length ? 'bots crashed → rewrite' : `${pc0(r.eval.table.random.overall.p)} < ${pc0(r.eval.table.greedy.overall.p)} < ${pc0(r.eval.table.lookahead.overall.p)} ${r.eval.ok ? '✓' : '→ rewrite'}` }))
 const lastOk = rounds.find(r => r.eval.ok)
 const say = {
   title: `This is Level Doctor. I shipped a game-jam game with twenty levels, and tuning them by hand took three rounds of guessing. Level Doctor is an agent that does it properly. It writes its own bot players, playtests the game thousands of times, finds out why players lose, and fixes the levels.`,
@@ -36,10 +44,11 @@ const say = {
   chaos: `Step three is a metric I couldn't find in any existing tool: the Chaos Ratio. This is ${ch.name}. Same seed, same bot. The only difference: the fourth drop moved by one ten-thousandth of a unit. One run ${ch.a.win ? 'wins' : 'loses'}. The other ${ch.b.win ? 'wins' : 'loses'}.`,
   chaosChart: `Do that for every level, compare the flip rate to a coin toss, and losses split into two kinds.${dice.length ? ` On ${dice.slice(0, 2).map(l => l.name).join(' and ')}, losses are dice rolls.` : ''}${traps.length ? ` On ${traps.slice(0, 2).map(l => l.name).join(' and ')}, they're reproducible traps a designer can fix.` : ''} Pass rate alone can't tell these apart, and they need completely different fixes.`,
   tempo: `Step four: twist exposure. This level is called Bass Drop. A bot at typical bot speed clears it in ${tp.fast.time.toFixed(0)} seconds, before the first bass drop at ${tp.firstBass.toFixed(0)}. It says the level is fine without ever hearing its twist. At human speed, the bass drops hit. So Level Doctor's bots play at human tempo, and every twist gets an exposure check.`,
-  fix: `Finally, the fix. For each off-target level, the agent plays one batch with unlimited drops, reads the pass rate for every possible drop limit straight off the survival curve, picks the limit that hits the target, and verifies it with fresh seeds. ${patched.length ? `${patched.length} level${patched.length > 1 ? 's' : ''} re-tuned, ${verified.length} verified inside the target band.` : 'Every level landed inside the target band.'}`,
+  stack: `Here's the stack.${stripeOk ? ' Stripe Projects set it up from the terminal: init, add CreateOS, and the credentials land in the env file.' : ''} Every batch runs in a CreateOS sandbox with its network locked down, because the bots are code an LLM wrote. A request from inside the sandbox fails. And the same seed gives the same result in the sandbox as on my laptop, hash for hash.`,
+  fix: `Finally, the fix. For each off-target level, the agent plays one batch with unlimited drops, reads the pass rate for every possible drop limit straight off the survival curve, picks the limit that hits the target, and verifies it with fresh seeds. ${patched.length ? `${patched.length} level${patched.length > 1 ? 's' : ''} re-tuned, and ${verified.length} of them verified within error bars of the target.` : 'Every level landed inside the target band.'}`,
   outro: `Level Doctor. Ten years of triple-A playtesting research, in five minutes, for indie web games. ${createos ? 'Built on CreateOS and Stripe Projects.' : 'Built for CreateOS and Stripe Projects.'}`,
 }
-const order = ['title', 'code', 'run', 'chaos', 'chaosChart', 'tempo', 'fix', 'outro']
+const order = ['title', 'code', 'run', 'stack', 'chaos', 'chaosChart', 'tempo', 'fix', 'outro']
 
 // ---------- narration ----------
 const durations = {}
@@ -48,7 +57,7 @@ for (const k of order) {
   execFileSync('python', ['-m', 'edge_tts', '--voice', VOICE, '--rate', '+4%', '--text', say[k], '--write-media', file], { stdio: 'pipe' })
   durations[k] = +execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file]).toString().trim()
 }
-const PAD = { title: 1.2, chaos: 2.5, tempo: 2.0, outro: 2.5 }
+const PAD = { title: 1.2, stack: 1.2, chaos: 2.5, tempo: 2.0, outro: 2.5 }
 const timeline = order.map(k => ({ scene: k, dur: +(durations[k] + (PAD[k] ?? 0.8)).toFixed(2), say: say[k], audio: durations[k], lead: k === 'title' ? 0.6 : 0.3 }))
 const total = timeline.reduce((a, s) => a + s.dur, 0)
 console.log('narration', order.map(k => `${k} ${durations[k].toFixed(1)}s`).join(' · '), `→ ${total.toFixed(1)} s total`)
@@ -69,7 +78,11 @@ for (const f of await readdir(path.join(MASHPIT, 'mon'))) await copyFile(path.jo
 
 // ---------- stage data + recording ----------
 const stage = {
-  traces, bots: bots.replace(/^\/\/.*\n/, ''), llm: res.llm, rounds: roundsText, totalRuns: res.runs.total, runLog,
+  traces, bots: bots.replace(/^\/\/.*\n/, ''), llm: res.llm, rounds: roundsText, totalRuns: res.runs.total, runLog, terminal, stream: stream?.chunks || null,
+  stack: [
+    ...(stripeOk ? ['$ stripe projects init leveldoctor', '$ stripe projects add createos/project', '$ stripe projects env --pull     # credentials → .env'] : []),
+    ...(sbCheck ? [`sandbox ${sbCheck.sandbox} · devbox:1 · node ${sbCheck.node}`, `egress allowlist: ${JSON.stringify(sbCheck.isolation.egress)}`, '$ curl https://example.com        # from inside the sandbox', `  → ${sbCheck.isolation.blocked ? 'BLOCKED ✓' : 'open'}  ${sbCheck.isolation.detail.slice(0, 58)}`, `same seeds, sandbox vs laptop → ${sbCheck.identical}/${sbCheck.runs} identical ✓`] : []),
+  ],
   backendLabel: createos ? 'inside a CreateOS sandbox' : 'on local workers',
   chaosBullets: [
     ...dice.slice(0, 3).map(l => `🎲 <b>${l.name}</b>: C = ${l.chaos.C.toFixed(2)}. Losses are dice rolls: soften the chaos, not the drop limit.`),

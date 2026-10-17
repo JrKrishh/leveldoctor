@@ -2,6 +2,7 @@
 // `local`: the same batch.mjs in child processes on this machine. Every result line records where it ran.
 import './env.mjs'
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
@@ -84,7 +85,7 @@ export async function serveReport(htmlFile) {
 const uploaded = new Map()
 async function upload(sb, local, remote) {
   const data = await readFile(local)
-  const key = remote + ':' + data.length
+  const key = createHash('sha1').update(data).digest('hex')   // content hash: a new round's bots must never be skipped
   if (uploaded.get(remote) === key) return
   await sb.files.upload(remote, data)
   uploaded.set(remote, key)
@@ -95,10 +96,17 @@ async function runCreateos(jobFile, name) {
   for (const f of ['src/runtime.mjs', 'src/batch.mjs', 'build/game.bundle.mjs']) await upload(sb, path.join(ROOT, f), '/work/' + f)
   await upload(sb, path.join(path.dirname(jobFile), 'policies.mjs'), '/work/out/jobs/policies.mjs')
   await upload(sb, jobFile, `/work/out/jobs/${name}.json`)
-  const { result, exec_ms } = await sb.runCommand('node', ['/work/src/batch.mjs', `/work/out/jobs/${name}.json`], { timeoutMs: 20 * 60_000 })
-  if (result.exit_code !== 0) throw new Error(`sandbox batch failed (${result.exit_code}): ${(result.stderr || result.error || '').slice(-800)}`)
-  const rows = parse(result.stdout)
+  // big batches go in chunks so no single request runs for many minutes
+  const total = JSON.parse(await readFile(jobFile, 'utf8')).tasks.length, chunks = Math.max(1, Math.ceil(total / 250))
+  const rows = []
+  let execMs = 0
+  for (let k = 0; k < chunks; k++) {
+    const { result, exec_ms } = await sb.runCommand('node', ['/work/src/batch.mjs', `/work/out/jobs/${name}.json`, String(k), String(chunks)], { timeoutMs: 15 * 60_000 })
+    if (result.exit_code !== 0) throw new Error(`sandbox batch failed (${result.exit_code}): ${(result.stderr || result.error || '').slice(-800)}`)
+    rows.push(...parse(result.stdout)); execMs += exec_ms
+    if (chunks > 1) console.log(`  [createos] chunk ${k + 1}/${chunks}: ${rows.length}/${total} runs`)
+  }
   for (const r of rows) r.sandbox = sb.id
-  console.log(`  [createos] sandbox ${sb.id}: ${rows.length} runs in ${(exec_ms / 1000).toFixed(1)} s`)
+  console.log(`  [createos] sandbox ${sb.id}: ${rows.length} runs in ${(execMs / 1000).toFixed(1)} s`)
   return rows
 }

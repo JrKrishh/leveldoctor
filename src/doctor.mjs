@@ -69,6 +69,8 @@ export async function diagnose({ policies, levels, N = 40, chaosN = 30, expN = 2
     }
     const pl = row.personas[PLAYER]
     row.status = pl.hi < t - BAND ? 'too_hard' : pl.lo > t + BAND ? 'too_easy' : 'ok'
+    // a regular bot far below random play can't be trusted to measure this level: don't tune from it
+    row.botSuspect = row.personas.random.p - pl.p > 0.25
     const c = chaos.filter(r => r.level === level), pairs = []
     for (const s of seeds(chaosN, 1001)) { const a = c.find(r => r.seed === s && r.tag === 'a'), b = c.find(r => r.seed === s && r.tag === 'b'); if (a && b) pairs.push([a, b]) }
     row.chaos = chaosRatio(pairs)
@@ -93,7 +95,8 @@ export async function diagnose({ policies, levels, N = 40, chaosN = 30, expN = 2
   }
 
   // 4. Tune: one batch with unlimited drops per off-target level, then read the pass rate at every limit.
-  const off = res.levels.filter(r => r.status !== 'ok')
+  for (const r of res.levels) if (r.botSuspect && r.status !== 'ok') r.tune = { note: 'the regular bot plays this level worse than random play: fix the bot before tuning the level' }
+  const off = res.levels.filter(r => r.status !== 'ok' && !r.botSuspect)
   log(`▶ 4/5 tuning ${off.length} off-target levels with one survival-curve batch`)
   if (off.length) {
     const surv = await batch(off.flatMap(r => {

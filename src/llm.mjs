@@ -10,17 +10,29 @@ const provider = () => process.env.LD_PROVIDER || Object.keys(PROVIDERS).find(k 
 const model = () => process.env.LD_MODEL || (PROVIDERS[provider()]?.model ?? (process.env.LD_OLLAMA_MODEL || 'qwen3:4b'))
 export const llmName = () => `${provider()}:${model()}`
 
-export async function chat(messages, { maxTokens = 3000 } = {}) {
+/** `stream` (optional) receives [ms since start, text chunk] as the model writes, for replaying the real output later. */
+export async function chat(messages, { maxTokens = 3000, stream = null } = {}) {
   const t0 = Date.now(), p = PROVIDERS[provider()]
   let text
-  if (p) {   // OpenAI-compatible chat completions
+  if (p) {   // OpenAI-compatible chat completions, streamed (server-sent events)
     const res = await fetch(`${p.url}/chat/completions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${process.env[p.key]}`, 'Content-Type': 'application/json', 'X-Title': 'Level Doctor' },
-      body: JSON.stringify({ model: model(), messages, max_tokens: Math.max(maxTokens, 8000), temperature: 0.4 }),
+      body: JSON.stringify({ model: model(), messages, max_tokens: Math.max(maxTokens, 8000), temperature: 0.4, stream: true }),
     })
     if (!res.ok) throw new Error(`${provider()} ${res.status}: ${(await res.text()).slice(0, 300)}`)
-    text = (await res.json()).choices?.[0]?.message?.content || ''
+    text = ''
+    let buf = ''
+    for await (const chunk of res.body) {
+      buf += Buffer.from(chunk).toString('utf8')
+      let nl
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1)
+        if (!line.startsWith('data:') || line === 'data: [DONE]') continue
+        const delta = JSON.parse(line.slice(5)).choices?.[0]?.delta?.content || ''
+        if (delta) { text += delta; stream?.([Date.now() - t0, delta]) }
+      }
+    }
   } else {
     const res = await fetch('http://localhost:11434/api/chat', {   // streamed: a slow local model must not hit fetch's header timeout
       method: 'POST',

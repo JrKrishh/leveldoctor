@@ -61,12 +61,33 @@ const S = {}
 S.title = () => { const d = el(`<div class="row" style="margin-top:0;align-items:center;height:100%"><div style="flex:1"><div class="kicker">CreateOS × Stripe Projects hackathon</div><h1 style="margin-top:14px">🩺 Level<br>Doctor</h1><p class="sub">An agent that writes its own bot players, playtests your game thousands of times in a sandbox, finds out <b>why</b> players lose, and fixes the levels.</p></div><div id="tp"></div></div>`)
   const c = pitCanvas(560); d.querySelector('#tp').appendChild(c); return t => drawPit(c, frameAt(T.chaos.a, t * 1.6 % T.chaos.a.time)) }
 S.code = () => { const d = el(`<div class="kicker">Step 1 · the agent writes code</div><h2>The LLM writes three bot players as code</h2><div class="row"><pre id="code" style="flex:1.4;height:440px"></pre><div style="flex:1"><div id="rounds"></div></div></div>`)
-  const pre = d.querySelector('#code'), code = D.bots
-  d.querySelector('#rounds').innerHTML = `<div class="sub" style="margin-top:0">${D.llm} writes casual, regular and expert bots. The agent plays them in the real game and feeds the pass rates back until skill ranks correctly.</div>` + D.rounds.map(r => `<div class="badge">round ${r.round}: ${r.text}</div>`).join('')
-  return (t, dur) => { const n = Math.floor(code.length * Math.min(1, t / (dur * .8))); pre.textContent = code.slice(Math.max(0, n - 1400), n) + (n < code.length ? '▍' : '') } }
+  const pre = d.querySelector('#code'), code = D.bots, st = D.stream
+  const streamMs = st ? st[st.length - 1][0] : 0
+  d.querySelector('#rounds').innerHTML = `<div class="sub" style="margin-top:0">${D.llm} writes casual, regular and expert bots. The agent runs them in the sandbox and feeds the pass rates back until skill ranks correctly.</div>` +
+    (st ? `<div class="badge">▶ the model's real output, replayed at ×<span id="spd"></span></div>` : '') + D.rounds.map(r => `<div class="badge">round ${r.round}: ${r.text}</div>`).join('')
+  return (t, dur) => {
+    if (st) {   // replay the recorded token stream, sped up to fit the scene
+      const span = dur * 0.8, at = Math.min(1, t / span) * streamMs
+      const sp = d.querySelector('#spd'); if (sp) sp.textContent = Math.max(1, Math.round(streamMs / 1000 / span))
+      let txt = ''; for (const [ms, c] of st) { if (ms > at) break; txt += c }
+      pre.textContent = txt.slice(-1400) + (at < streamMs ? '▍' : '')
+    } else { const n = Math.floor(code.length * Math.min(1, t / (dur * .8))); pre.textContent = code.slice(Math.max(0, n - 1400), n) + (n < code.length ? '▍' : '') }
+  } }
 S.run = () => { const d = el(`<div class="kicker">Step 2 · run it in the sandbox</div><h2>Thousands of deterministic playtests of the real game</h2><div class="row"><div style="flex:1"><div class="big" id="cnt">0</div><div class="sub" style="margin-top:4px">playtests · ${D.backendLabel}</div><div class="badge">provisioned with Stripe Projects</div><div class="badge">real game code, headless</div><div class="badge">same seed = identical replay</div></div><pre id="log" style="flex:1.3;height:420px"></pre></div>`)
-  const cnt = d.querySelector('#cnt'), log = d.querySelector('#log'), lines = D.runLog
-  return (t, dur) => { const k = Math.min(1, t / (dur * .85)); cnt.textContent = Math.round(D.totalRuns * k).toLocaleString(); log.textContent = lines.slice(0, Math.ceil(lines.length * k)).join('\n') } }
+  const cnt = d.querySelector('#cnt'), log = d.querySelector('#log'), lines = D.runLog, term = D.terminal?.length ? D.terminal : null
+  const termMs = term ? term[term.length - 1][0] : 0
+  return (t, dur) => {
+    const k = Math.min(1, t / (dur * .85))
+    if (term) {   // the real run's output, at its real relative timing, sped up
+      const at = k * termMs, shown = term.filter(([ms]) => ms <= at).map(([, l]) => l)
+      const done = shown.join('\n').match(/(\d+) playtests on/g)?.reduce((s, m) => s + +m.match(/\d+/)[0], 0) || 0
+      cnt.textContent = Math.min(D.totalRuns, done).toLocaleString()
+      log.textContent = `# real run, ×${Math.max(1, Math.round(termMs / 1000 / (dur * .85)))} speed\n` + shown.slice(-17).join('\n')
+    } else { cnt.textContent = Math.round(D.totalRuns * k).toLocaleString(); log.textContent = lines.slice(0, Math.ceil(lines.length * k)).join('\n') }
+  } }
+S.stack = () => { const d = el(`<div class="kicker">Built on Stripe Projects + CreateOS Sandbox</div><h2>A locked-down sandbox for code an LLM wrote</h2><div class="row"><pre id="stk" style="flex:1.5;height:420px;font-size:17px"></pre><div style="flex:1"><div class="badge">network locked down</div><div class="badge">one reused sandbox, auto-pause</div><div class="badge">identical results to local</div><div class="badge">report on the sandbox's live URL</div></div></div>`)
+  const pre = d.querySelector('#stk'), lines = D.stack || []
+  return (t, dur) => { const n = Math.ceil(lines.length * Math.min(1, t / (dur * .75))); pre.textContent = lines.slice(0, n).join('\n') } }
 S.chaos = () => { const c = T.chaos, d = el(`<div class="kicker">Step 3 · a new metric: the Chaos Ratio</div><h2>${c.name}: same seed. One drop moved 0.0001 units.</h2><div class="row" style="justify-content:center;gap:60px"><div><div id="pa"></div><div class="stamp" id="sa"></div></div><div><div id="pb"></div><div class="stamp" id="sb"></div></div><div style="width:380px"><p class="sub" style="margin-top:20px">The only difference is the 4th drop, nudged by a ten-thousandth of a unit: far less than a pixel.</p><p class="sub">If outcomes flip as often as a coin toss, losses are <b>dice rolls</b> (C ≈ 1). If they never flip, they're <b>traps a designer can fix</b> (C ≈ 0).</p></div></div>`)
   const ca = pitCanvas(410), cb = pitCanvas(410); d.querySelector('#pa').appendChild(ca); d.querySelector('#pb').appendChild(cb)
   const sa = d.querySelector('#sa'), sb = d.querySelector('#sb'), end = Math.max(c.a.time, c.b.time)

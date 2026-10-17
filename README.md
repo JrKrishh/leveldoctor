@@ -2,6 +2,10 @@
 
 **An AI agent that writes its own bot players, playtests your web game thousands of times inside a CreateOS sandbox, finds out *why* players lose, and re-tunes your levels with error bars on every number.**
 
+<img src="docs/chaos-pair.gif" width="420" alt="Two replays of the same Mash Pit level with the same seed; one drop is nudged by 0.0001 units and the runs diverge into a win and a loss">
+
+*Same level, same seed, same bot. The only difference: the 4th drop moved by 0.0001 units. One run wins, the other runs out of drops. That's the Chaos Ratio's whole idea.*
+
 Built for the CreateOS × Stripe Projects hackathon (Oct 18, 2026). Demo subject: [Mash Pit](https://w.run/boopathiraja/mash-pit), my own 20-level physics merge game, live in a game jam with real players. Tuning its levels by hand took three rounds of guessing. Level Doctor replaces that with measurement.
 
 ## The problem

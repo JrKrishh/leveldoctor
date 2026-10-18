@@ -6,7 +6,7 @@
 
 *Same level, same seed, same bot. The only difference: the 4th drop moved by 0.0001 units. One run wins, the other runs out of drops. That's the Chaos Ratio's whole idea.*
 
-Built for the CreateOS × Stripe Projects hackathon (Oct 18, 2026). Demo subject: [Mash Pit](https://w.run/boopathiraja/mash-pit), my own 20-level physics merge game, live in a game jam with real players. Tuning its levels by hand took three rounds of guessing. Level Doctor replaces that with measurement.
+Built overnight on Oct 18, 2026, starting from an empty directory. Demo subject: [Mash Pit](https://w.run/boopathiraja/mash-pit), my own 20-level physics merge game, live in a game jam with real players. Tuning its levels by hand took three rounds of guessing. Level Doctor replaces that with measurement.
 
 ## The problem
 
@@ -72,10 +72,23 @@ The same agent also runs on **ORBITAL**, an endless arcade game (circle a star, 
 node games/orbital/run.mjs   # bots → survival curves → chaos → tune SPAWN_RAMP → verify → out/orbital-results.json
 ```
 
-## How Stripe Projects and CreateOS Sandbox are used
+## How accurate is it?
 
-- **Stripe Projects** sets up the stack from the CLI: `stripe projects init`, `stripe projects add createos/project` (and `openrouter/api`), `stripe projects env --pull` puts the credentials in `.env`.
-- **CreateOS Sandbox** (`@nodeops-createos/sandbox`) runs every batch: one reused `devbox:1` sandbox, **egress locked down** (the bots are LLM-written code; `scripts/sandbox-check.mjs` proves an outbound request fails), auto-pause between batches, and **ingress** to serve the report from the sandbox's public URL.
+Measured, not assumed (`scripts/accuracy-check.mjs`, results in `out/accuracy.json`):
+
+| Claim | Evidence | Verdict |
+|---|---|---|
+| Runs reproduce exactly | Same seed → byte-identical run; the full 6,560-run diagnosis in the CreateOS sandbox (Linux) matched a local run (Windows) on 20/20 levels | **Exact** |
+| It runs the real game | The unmodified game source is bundled and stepped headless; the patched copy boots in a real browser with the new limits | **Exact** (no rendering/audio; the DJ follows the game clock instead of the music clock) |
+| Pass rates have honest error bars | Re-measured every level with 40 fresh seeds: typical change 5 points, intervals ±7 points on average (±15 at worst). 17/20 fresh values fell inside the original 95% interval; with two noisy measurements, honest intervals should catch about 83% | **Calibrated**, but n=40 per level is coarse |
+| One-batch tuning predicts the new pass rate | Predicted vs verified: off by 10 points on average, and mostly too low (it ignores the 2.5 s grace after the last drop, when merges can still finish the goal) | **Rough**: that's why every patch is re-verified; 5/6 verified within error bars, 3/6 within 5 points of target |
+| Chaos Ratio separates luck from traps | Consistent across play styles on most levels (Bouncy Castle 1.20 vs 1.19), but Tight Squeeze flips (0.00 regular vs 0.88 expert); 30 pairs per level → roughly ±0.3 | **Indicative**, per play style |
+| Twist exposure | "Bass Drop!": 5% of runs exposed at bot speed vs 100% at human speed, the same in every bot version tested | **Robust** |
+| Predicts difficulty for real humans | Not validated: the bots clear many levels 100% of the time, so "too easy" means too easy *for these bots*; the 95% → 60% target is a designer choice | **Unknown**: needs per-level analytics from real players to calibrate |
+
+## How CreateOS Sandbox is used
+
+**CreateOS Sandbox** (`@nodeops-createos/sandbox`) runs every batch: one reused `devbox:1` sandbox, **egress locked down** (the bots are LLM-written code; `scripts/sandbox-check.mjs` proves an outbound request fails), auto-pause between batches with resume on demand, and **ingress** to serve the report from the sandbox's public URL.
 
 ## Run it
 
@@ -93,10 +106,10 @@ Backend: the CreateOS sandbox when `CREATEOS_SANDBOX_API_KEY` is set, otherwise 
 
 ## Tech
 
-Node 24 · esbuild · matter-js (the game's own physics, bundled unmodified) · CreateOS Sandbox SDK · Stripe Projects CLI · Nebius Token Factory (Qwen3-235B) / OpenRouter · Playwright + ffmpeg + edge-tts for the demo video.
+Node 24 · esbuild · matter-js (the game's own physics, bundled unmodified) · CreateOS Sandbox SDK · Nebius Token Factory (Qwen3-235B) · Playwright + ffmpeg + edge-tts for the demo video.
 
 ## Honest limits
 
 - The target curve is a designer choice (95% → 60% for a regular player); calibrate it against real analytics before applying a patch to a live game.
 - Bots are only as good as the code the LLM writes; the skill check catches broken bots, not subtly unhuman ones.
-- Mash Pit's source is not in this repo: it's the input, a separate live game. All Level Doctor code was written during the hackathon.
+- Mash Pit's source is not in this repo: it's the input, a separate live game. All Level Doctor code was written in that one night.
